@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { FolderOpen, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { useFileDrop } from '@/lib/useFileDrop'
 import { cn } from '@/lib/utils'
@@ -16,6 +17,7 @@ export function ImageEditor({
 }): React.JSX.Element {
   const current = typeof value === 'string' && value ? value : undefined
   const [urlDraft, setUrlDraft] = useState('')
+  const [previewOpen, setPreviewOpen] = useState(false)
   const fileDrop = useFileDrop('image', projectId, onChange)
 
   const applyUrl = (): void => {
@@ -43,7 +45,17 @@ export function ImageEditor({
     >
       {current && (
         <div className="relative">
-          <img src={current} alt="" className="max-h-40 w-full rounded-md border object-cover" />
+          <button
+            type="button"
+            className="block w-full cursor-zoom-in"
+            onClick={() => setPreviewOpen(true)}
+          >
+            <img
+              src={current}
+              alt=""
+              className="max-h-40 w-full rounded-md border object-cover"
+            />
+          </button>
           <Button
             variant="secondary"
             size="icon"
@@ -72,6 +84,34 @@ export function ImageEditor({
           </Button>
         )}
       </div>
+      {current && (
+        <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+          <DialogContent
+            showCloseButton={false}
+            className="flex w-auto max-w-[calc(100%-2rem)] items-center justify-center border-none bg-transparent p-0 shadow-none ring-0 sm:max-w-[calc(100%-4rem)]"
+          >
+            <DialogTitle className="sr-only">Image preview</DialogTitle>
+            <img
+              src={current}
+              alt=""
+              className="max-h-[85vh] max-w-full cursor-zoom-out rounded-md object-contain"
+              onClick={() => setPreviewOpen(false)}
+            />
+            <DialogClose
+              render={
+                <Button
+                  variant="secondary"
+                  size="icon-sm"
+                  className="absolute top-2 right-2 rounded-full bg-black/60 text-white shadow-md hover:bg-black/80 hover:text-white"
+                />
+              }
+            >
+              <X />
+              <span className="sr-only">Close</span>
+            </DialogClose>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
