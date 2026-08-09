@@ -10,6 +10,19 @@ function formatTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
+// Every <AudioPlayer> instance is independent (own <audio> element, own
+// state), but only one clip should ever be audible at a time. Track the
+// single currently-playing element at module scope so starting one player
+// can reach across and pause whichever other one is running.
+let currentlyPlaying: HTMLAudioElement | null = null
+
+function pauseOthers(el: HTMLAudioElement): void {
+  if (currentlyPlaying && currentlyPlaying !== el) {
+    currentlyPlaying.pause()
+  }
+  currentlyPlaying = el
+}
+
 /**
  * Minimal play/pause + seek bar + time. Stands in for the browser's native
  * `<audio controls>`, which also ships a volume slider and an overflow menu
@@ -28,11 +41,36 @@ export function AudioPlayer({ src, className }: { src: string; className?: strin
     setCurrent(0)
   }, [src])
 
+  // Don't leave a dangling reference behind when this player unmounts (e.g.
+  // the record it belongs to scrolls out of a virtualized list) while it was
+  // the one "currently playing" — otherwise the next player's first play
+  // would try to pause an element that's already gone.
+  useEffect(() => {
+    return () => {
+      if (currentlyPlaying === audioRef.current) currentlyPlaying = null
+    }
+  }, [])
+
   const togglePlay = (): void => {
     const audio = audioRef.current
     if (!audio) return
-    if (audio.paused) void audio.play()
-    else audio.pause()
+    if (audio.paused) {
+      // A previous play() may have been interrupted (e.g. by another
+      // player's pause(), or a transient load failure) and left the element
+      // stuck rejecting further play() calls. Reloading the source resets
+      // it so playback can actually resume instead of silently no-op'ing.
+      if (audio.error || audio.networkState === audio.NETWORK_NO_SOURCE) {
+        audio.load()
+      }
+      audio.play().catch(() => {
+        // play() was rejected (e.g. AbortError from a rapid pause, or a
+        // genuine load failure) — reflect that we're not playing instead of
+        // leaving the button stuck showing "playing".
+        setPlaying(false)
+      })
+    } else {
+      audio.pause()
+    }
   }
 
   const seek = (e: React.MouseEvent<HTMLDivElement>): void => {
@@ -59,9 +97,14 @@ export function AudioPlayer({ src, className }: { src: string; className?: strin
         src={src}
         preload="metadata"
         className="hidden"
-        onPlay={() => setPlaying(true)}
+        onPlay={(e) => {
+          pauseOthers(e.currentTarget)
+          setPlaying(true)
+        }}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
+        onError={() => setPlaying(false)}
+        onStalled={() => setPlaying(false)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
         onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)}
       />
