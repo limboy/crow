@@ -42,7 +42,8 @@ import { cn } from '@/lib/utils'
 type CalendarViewType = Extract<View, { type: 'calendar' }>
 type CalendarMode = NonNullable<CalendarViewType['config']['mode']>
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const WEEK_STARTS_ON = { weekStartsOn: 1 } as const
 const CREATED_DATE_SOURCE: Field = {
   id: CREATED_AT_DATE_SOURCE,
   name: 'Created',
@@ -209,8 +210,14 @@ function CalendarGrid({
   const month = startOfMonth(anchorDate)
   const range =
     mode === 'month'
-      ? { start: startOfWeek(month), end: endOfWeek(endOfMonth(month)) }
-      : { start: startOfWeek(anchorDate), end: endOfWeek(anchorDate) }
+      ? {
+          start: startOfWeek(month, WEEK_STARTS_ON),
+          end: endOfWeek(endOfMonth(month), WEEK_STARTS_ON)
+        }
+      : {
+          start: startOfWeek(anchorDate, WEEK_STARTS_ON),
+          end: endOfWeek(anchorDate, WEEK_STARTS_ON)
+        }
   const days = eachDayOfInterval(range)
   const rowCount = days.length / 7
   const gridRef = useRef<HTMLDivElement>(null)
@@ -407,8 +414,8 @@ function useVisibleEventCapacity(
 function formatRangeTitle(anchorDate: Date, mode: CalendarMode): string {
   if (mode === 'month') return format(anchorDate, 'MMMM yyyy')
 
-  const start = startOfWeek(anchorDate)
-  const end = endOfWeek(anchorDate)
+  const start = startOfWeek(anchorDate, WEEK_STARTS_ON)
+  const end = endOfWeek(anchorDate, WEEK_STARTS_ON)
   if (start.getFullYear() !== end.getFullYear()) {
     return `${format(start, 'MMM d, yyyy')} – ${format(end, 'MMM d, yyyy')}`
   }
