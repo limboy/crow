@@ -6,7 +6,6 @@ import {
   endOfMonth,
   endOfWeek,
   format,
-  getWeek,
   isValid,
   isSameDay,
   isSameMonth,
@@ -24,7 +23,6 @@ import {
   type View
 } from '@shared/types'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
   Popover,
   PopoverContent,
