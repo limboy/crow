@@ -42,7 +42,10 @@ export interface RecordRow {
   values: Record<string, unknown>
 }
 
-export type ViewType = 'table' | 'kanban' | 'gallery'
+/** Sentinel used by Calendar views for the record's built-in creation timestamp. */
+export const CREATED_AT_DATE_SOURCE = '__createdAt__'
+
+export type ViewType = 'table' | 'kanban' | 'gallery' | 'calendar'
 
 export type FilterOperator =
   | 'contains'
@@ -88,10 +91,17 @@ export interface GalleryViewConfig {
   hiddenFieldIds: string[]
 }
 
+export interface CalendarViewConfig {
+  dateFieldId?: string
+  hiddenFieldIds: string[]
+  mode?: 'month' | 'week'
+}
+
 export type View =
   | { id: string; name: string; type: 'table'; config: TableViewConfig }
   | { id: string; name: string; type: 'kanban'; config: KanbanViewConfig }
   | { id: string; name: string; type: 'gallery'; config: GalleryViewConfig }
+  | { id: string; name: string; type: 'calendar'; config: CalendarViewConfig }
 
 export interface Project {
   id: string

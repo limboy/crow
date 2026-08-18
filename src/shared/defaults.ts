@@ -1,4 +1,4 @@
-import type { Field, Project, RecordRow, View } from './types'
+import { CREATED_AT_DATE_SOURCE, type Field, type Project, type RecordRow, type View } from './types'
 
 const uuid = (): string => crypto.randomUUID()
 const now = (): string => new Date().toISOString()
@@ -8,7 +8,10 @@ export function newRecord(values: Record<string, unknown> = {}): RecordRow {
 }
 
 export function newView(type: View['type'], name?: string): View {
-  const base = { id: uuid(), name: name ?? { table: 'Table', kanban: 'Kanban', gallery: 'Gallery' }[type] }
+  const base = {
+    id: uuid(),
+    name: name ?? { table: 'Table', kanban: 'Kanban', gallery: 'Gallery', calendar: 'Calendar' }[type]
+  }
   switch (type) {
     case 'table':
       return {
@@ -20,6 +23,12 @@ export function newView(type: View['type'], name?: string): View {
       return { ...base, type, config: { hiddenFieldIds: [] } }
     case 'gallery':
       return { ...base, type, config: { hiddenFieldIds: [] } }
+    case 'calendar':
+      return {
+        ...base,
+        type,
+        config: { dateFieldId: CREATED_AT_DATE_SOURCE, hiddenFieldIds: [], mode: 'month' }
+      }
   }
 }
 

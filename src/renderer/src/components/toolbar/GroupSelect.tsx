@@ -22,7 +22,8 @@ export function GroupSelect({
   onChange,
   label = 'Group',
   icon = Rows3,
-  noneLabel = 'No grouping'
+  noneLabel = 'No grouping',
+  allowNone = true
 }: {
   fields: Field[]
   value?: string
@@ -30,6 +31,7 @@ export function GroupSelect({
   label?: string
   icon?: typeof Rows3
   noneLabel?: string
+  allowNone?: boolean
 }): React.JSX.Element {
   const active = fields.find((f) => f.id === value)
 
@@ -63,14 +65,18 @@ export function GroupSelect({
               )
             })}
           </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuRadioItem
-            value={NONE_VALUE}
-            closeOnClick
-            className="text-muted-foreground"
-          >
-            {noneLabel}
-          </DropdownMenuRadioItem>
+          {allowNone && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuRadioItem
+                value={NONE_VALUE}
+                closeOnClick
+                className="text-muted-foreground"
+              >
+                {noneLabel}
+              </DropdownMenuRadioItem>
+            </>
+          )}
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -1,5 +1,12 @@
 import { newRecord, newView } from '@shared/defaults'
-import type { Field, Project, RecordRow, View, ViewType } from '@shared/types'
+import {
+  CREATED_AT_DATE_SOURCE,
+  type Field,
+  type Project,
+  type RecordRow,
+  type View,
+  type ViewType
+} from '@shared/types'
 
 /** Pure Project -> Project transforms, applied through useUpdateProject. */
 
@@ -10,6 +17,10 @@ export function patchView(project: Project, viewId: string, fn: (view: View) => 
 export function addView(project: Project, type: ViewType): Project {
   const count = project.views.filter((v) => v.type === type).length
   const view = newView(type)
+  if (view.type === 'calendar') {
+    view.config.dateFieldId =
+      project.fields.find((field) => field.type === 'date')?.id ?? CREATED_AT_DATE_SOURCE
+  }
   if (count > 0) view.name = `${view.name} ${count + 1}`
   return { ...project, views: [...project.views, view] }
 }
@@ -130,6 +141,15 @@ export function deleteField(project: Project, fieldId: string): Project {
             ...view.config,
             hiddenFieldIds,
             coverFieldId: view.config.coverFieldId === fieldId ? undefined : view.config.coverFieldId
+          }
+        }
+      case 'calendar':
+        return {
+          ...view,
+          config: {
+            ...view.config,
+            hiddenFieldIds,
+            dateFieldId: view.config.dateFieldId === fieldId ? undefined : view.config.dateFieldId
           }
         }
     }

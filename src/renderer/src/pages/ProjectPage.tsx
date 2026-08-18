@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
+  CalendarDays,
   ChevronDown,
   GalleryVertical,
   Plus,
@@ -30,6 +31,7 @@ import { RecordSheet } from '@/components/RecordSheet'
 import { TableView } from '@/views/TableView'
 import { KanbanView } from '@/views/KanbanView'
 import { GalleryView } from '@/views/GalleryView'
+import { CalendarView } from '@/views/CalendarView'
 import * as ops from '@/lib/ops'
 import { applyFilters } from '@/lib/derive'
 import { useProject, useProjects, useUpdateProject, type ProjectUpdater } from '@/lib/queries'
@@ -38,7 +40,8 @@ import { cn } from '@/lib/utils'
 export const VIEW_ICONS: Record<ViewType, LucideIcon> = {
   table: Table2,
   kanban: SquareKanban,
-  gallery: GalleryVertical
+  gallery: GalleryVertical,
+  calendar: CalendarDays
 }
 
 export interface ViewProps {
@@ -115,6 +118,9 @@ export default function ProjectPage(): React.JSX.Element {
         )}
         {activeView?.type === 'gallery' && (
           <GalleryView project={project} view={activeView} update={update} onOpenRecord={setOpenRecordId} />
+        )}
+        {activeView?.type === 'calendar' && (
+          <CalendarView project={project} view={activeView} update={update} onOpenRecord={setOpenRecordId} />
         )}
       </div>
 
@@ -220,7 +226,7 @@ function ViewTabs({
           }
         />
         <DropdownMenuContent align="start">
-          {(['table', 'kanban', 'gallery'] as const).map((type) => {
+          {(['table', 'kanban', 'gallery', 'calendar'] as const).map((type) => {
             const Icon = VIEW_ICONS[type]
             return (
               <DropdownMenuItem
@@ -234,7 +240,13 @@ function ViewTabs({
                 }
               >
                 <Icon />
-                {type === 'table' ? 'Table' : type === 'kanban' ? 'Kanban' : 'Gallery'}
+                {type === 'table'
+                  ? 'Table'
+                  : type === 'kanban'
+                    ? 'Kanban'
+                    : type === 'gallery'
+                      ? 'Gallery'
+                      : 'Calendar'}
               </DropdownMenuItem>
             )
           })}
