@@ -33,8 +33,10 @@ import {
 } from '@/components/ui/popover'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FieldDialog } from '@/components/FieldDialog'
+import { ValueDisplay } from '@/components/ValueDisplay'
+import { FieldsPopover } from '@/components/toolbar/FieldsPopover'
 import { GroupSelect } from '@/components/toolbar/GroupSelect'
-import { displayValue } from '@/lib/fields'
+import { displayValue, isEmptyValue } from '@/lib/fields'
 import { useProjectTables } from '@/lib/relations'
 import * as ops from '@/lib/ops'
 import type { TableUpdater } from '@/lib/queries'
@@ -64,12 +66,16 @@ export function CalendarView({
 }): React.JSX.Element {
   const [anchorDate, setAnchorDate] = useState(() => new Date())
   const [addFieldOpen, setAddFieldOpen] = useState(false)
+  const config = view.config
   const dateFields = table.fields.filter((field) => field.type === 'date')
   const dateSources = [CREATED_DATE_SOURCE, ...dateFields]
   const dateSource =
-    dateSources.find((field) => field.id === view.config.dateFieldId) ?? CREATED_DATE_SOURCE
+    dateSources.find((field) => field.id === config.dateFieldId) ?? CREATED_DATE_SOURCE
   const canAddOnDay = dateSource.id !== CREATED_AT_DATE_SOURCE
-  const mode = view.config.mode ?? 'month'
+  const mode = config.mode ?? 'month'
+  const cardFields = table.fields.filter(
+    (field) => !config.hiddenFieldIds.includes(field.id) && field.id !== dateSource.id
+  )
 
   const patchConfig = (patch: Partial<CalendarViewType['config']>): void => {
     update((p) =>
@@ -120,6 +126,14 @@ export function CalendarView({
             Add date field
           </Button>
         )}
+        {mode === 'week' && (
+          <FieldsPopover
+            fields={table.fields}
+            hiddenFieldIds={config.hiddenFieldIds}
+            onChange={(hiddenFieldIds) => patchConfig({ hiddenFieldIds })}
+            lockedFieldId={table.fields[0]?.id}
+          />
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           <Tabs
@@ -167,6 +181,7 @@ export function CalendarView({
         mode={mode}
         table={table}
         dateSourceId={dateSource.id}
+        cardFields={cardFields}
         onOpenRecord={onOpenRecord}
         onAddRecord={canAddOnDay ? addRecordOn : undefined}
       />
@@ -197,6 +212,7 @@ function CalendarGrid({
   mode,
   table,
   dateSourceId,
+  cardFields,
   onOpenRecord,
   onAddRecord
 }: {
@@ -204,6 +220,7 @@ function CalendarGrid({
   mode: CalendarMode
   table: Table
   dateSourceId: string
+  cardFields: Field[]
   onOpenRecord: (recordId: string) => void
   onAddRecord?: (day: Date) => void
 }): React.JSX.Element {
@@ -259,7 +276,7 @@ function CalendarGrid({
           const records = recordsByDay.get(dateKey) ?? []
           const today = isSameDay(day, new Date())
           const inMonth = mode === 'week' || isSameMonth(day, month)
-          const hasMore = records.length > visibleEventCapacity
+          const hasMore = mode === 'month' && records.length > visibleEventCapacity
           const visibleRecords = hasMore
             ? records.slice(0, Math.max(0, visibleEventCapacity - 1))
             : records
@@ -294,12 +311,18 @@ function CalendarGrid({
                   </Button>
                 )}
               </div>
-              <div className="flex min-h-0 flex-col gap-1 overflow-hidden">
+              <div
+                className={cn(
+                  'flex min-h-0 flex-col gap-1',
+                  mode === 'week' ? 'overflow-y-auto' : 'overflow-hidden'
+                )}
+              >
                 {visibleRecords.map((record) => (
                   <CalendarEventButton
                     key={record.id}
                     record={record}
                     titleField={titleField}
+                    cardFields={mode === 'week' ? cardFields : undefined}
                     onOpenRecord={onOpenRecord}
                   />
                 ))}
@@ -324,14 +347,62 @@ function CalendarGrid({
 function CalendarEventButton({
   record,
   titleField,
+  cardFields,
   onOpenRecord
 }: {
   record: RecordRow
   titleField?: Field
+  cardFields?: Field[]
   onOpenRecord: (recordId: string) => void
 }): React.JSX.Element {
   const tables = useProjectTables()
   const title = titleField ? displayValue(titleField, record.values[titleField.id], tables) : ''
+  const detailFields = cardFields?.filter(
+    (field) => field.id !== titleField?.id && !isEmptyValue(field, record.values[field.id])
+  )
+
+  if (cardFields) {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        className="shrink-0 rounded-md border bg-card p-2 text-left shadow-xs outline-none transition-shadow hover:shadow-sm focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => onOpenRecord(record.id)}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return
+          if (event.key !== 'Enter' && event.key !== ' ') return
+          event.preventDefault()
+          onOpenRecord(record.id)
+        }}
+      >
+        <div className={cn('truncate text-[13px] font-medium', !title && 'text-muted-foreground')}>
+          {title || 'Untitled'}
+        </div>
+        {detailFields && detailFields.length > 0 && (
+          <div className="mt-1.5 flex flex-col gap-1.5">
+            {detailFields.map((field) =>
+              field.type === 'image' ? (
+                <img
+                  key={field.id}
+                  src={String(record.values[field.id])}
+                  alt=""
+                  className="h-28 w-full rounded-sm border object-cover"
+                />
+              ) : (
+                <div key={field.id} className="flex min-w-0 text-xs text-muted-foreground">
+                  <ValueDisplay
+                    field={field}
+                    value={record.values[field.id]}
+                    className="max-w-full"
+                  />
+                </div>
+              )
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <Button
