@@ -7,6 +7,7 @@ import { ValueDisplay } from '@/components/ValueDisplay'
 import { FieldsPopover } from '@/components/toolbar/FieldsPopover'
 import { GroupSelect } from '@/components/toolbar/GroupSelect'
 import { displayValue, isEmptyValue } from '@/lib/fields'
+import { useProjectTables } from '@/lib/relations'
 import * as ops from '@/lib/ops'
 import type { TableUpdater } from '@/lib/queries'
 import { cn } from '@/lib/utils'
@@ -130,7 +131,8 @@ function GalleryCard({
 }): React.JSX.Element {
   const coverValue = coverField ? record.values[coverField.id] : undefined
   const hasCover = coverField !== undefined && !isEmptyValue(coverField, coverValue)
-  const title = titleField ? displayValue(titleField, record.values[titleField.id]) : ''
+  const tables = useProjectTables()
+  const title = titleField ? displayValue(titleField, record.values[titleField.id], tables) : ''
   const detailFields = cardFields.filter(
     (f) => f.id !== titleField?.id && !isEmptyValue(f, record.values[f.id])
   )

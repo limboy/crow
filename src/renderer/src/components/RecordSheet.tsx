@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ValueEditor } from '@/components/editors/ValueEditor'
 import { displayValue, fieldTypeInfo } from '@/lib/fields'
 import * as ops from '@/lib/ops'
+import { useProjectTables } from '@/lib/relations'
 import type { TableUpdater } from '@/lib/queries'
 
 export function RecordSheet({
@@ -22,10 +23,11 @@ export function RecordSheet({
   onClose: () => void
   update: TableUpdater
 }): React.JSX.Element {
+  const tables = useProjectTables()
   const record = table.records.find((r) => r.id === recordId)
   const titleField = table.fields[0]
   const title =
-    record && titleField ? displayValue(titleField, record.values[titleField.id]) : ''
+    record && titleField ? displayValue(titleField, record.values[titleField.id], tables) : ''
 
   return (
     <Sheet open={record !== undefined} onOpenChange={(open) => !open && onClose()}>

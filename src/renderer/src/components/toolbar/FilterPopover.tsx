@@ -10,7 +10,8 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
-import { fieldTypeInfo, operatorsFor } from '@/lib/fields'
+import { fieldTypeInfo, operatorsFor, recordLabel } from '@/lib/fields'
+import { useRelationTable } from '@/lib/relations'
 import { ToolbarButton } from './ToolbarButton'
 
 const uuid = (): string => crypto.randomUUID()
@@ -199,6 +200,8 @@ function FilterValueInput({
         </Select>
       )
     }
+    case 'relation':
+      return <RelationFilterValue field={field} value={value} onChange={onChange} />
     case 'date':
       return (
         <Input
@@ -232,4 +235,40 @@ function FilterValueInput({
         />
       )
   }
+}
+
+/** Relation rules match on a linked record id, so the value is picked from
+ *  the linked table rather than typed. */
+function RelationFilterValue({
+  field,
+  value,
+  onChange
+}: {
+  field: Field
+  value: unknown
+  onChange: (value: unknown) => void
+}): React.JSX.Element {
+  const target = useRelationTable(field)
+  if (!target) {
+    return <Input className="h-8 text-sm" disabled placeholder="Linked table missing" />
+  }
+
+  return (
+    <Select
+      items={Object.fromEntries(target.records.map((r) => [r.id, recordLabel(target, r)]))}
+      value={typeof value === 'string' ? value : ''}
+      onValueChange={(v) => onChange(v)}
+    >
+      <SelectTrigger size="sm" className="w-full">
+        <SelectValue placeholder="Record…" />
+      </SelectTrigger>
+      <SelectContent>
+        {target.records.map((record) => (
+          <SelectItem key={record.id} value={record.id}>
+            {recordLabel(target, record)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
 }

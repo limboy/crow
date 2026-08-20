@@ -35,6 +35,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FieldDialog } from '@/components/FieldDialog'
 import { GroupSelect } from '@/components/toolbar/GroupSelect'
 import { displayValue } from '@/lib/fields'
+import { useProjectTables } from '@/lib/relations'
 import * as ops from '@/lib/ops'
 import type { TableUpdater } from '@/lib/queries'
 import { cn } from '@/lib/utils'
@@ -329,7 +330,8 @@ function CalendarEventButton({
   titleField?: Field
   onOpenRecord: (recordId: string) => void
 }): React.JSX.Element {
-  const title = titleField ? displayValue(titleField, record.values[titleField.id]) : ''
+  const tables = useProjectTables()
+  const title = titleField ? displayValue(titleField, record.values[titleField.id], tables) : ''
 
   return (
     <Button

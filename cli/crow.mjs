@@ -16,7 +16,7 @@ import { randomUUID } from 'crypto'
 
 const SAFE_ID = /^[a-zA-Z0-9-]+$/
 
-const FIELD_TYPES = ['text', 'number', 'select', 'multiSelect', 'date', 'checkbox', 'url', 'image', 'audio']
+const FIELD_TYPES = ['text', 'number', 'select', 'multiSelect', 'date', 'checkbox', 'url', 'image', 'audio', 'relation']
 
 const CHOICE_COLORS = ['gray', 'red', 'orange', 'amber', 'green', 'teal', 'blue', 'indigo', 'purple', 'pink']
 
@@ -185,6 +185,53 @@ function resolveField(table, name) {
   fail(`No field named "${name}" in table "${table.name}". Fields: ${table.fields.map((f) => f.name).join(', ')}`)
 }
 
+/** The table a relation field links to, or undefined if it's been deleted. */
+function linkedTable(project, field) {
+  return project.tables.find((t) => t.id === field.relation?.tableId)
+}
+
+/**
+ * Resolves the table a relation field points at. Unlike --table this never
+ * guesses: a link has to name its target, even in a single-table project.
+ */
+function linkTargetFor(project, ref, fieldName) {
+  if (ref === undefined || ref === true || ref === '') {
+    fail(`Field "${fieldName}" is a relation; name the table it links to with --link-table <name>`)
+  }
+  return resolveTable(project, ref)
+}
+
+/** How a record reads when linked from another table: its first field's
+ *  value, matching the label the app shows. Never follows a relation — one
+ *  level is enough to name a row, and it can't recurse. */
+function recordLabel(table, record) {
+  const primary = table.fields[0]
+  const raw = primary ? record.values[primary.id] : undefined
+  if (primary === undefined || raw === undefined || raw === null || raw === '') return 'Untitled'
+  if (primary.type === 'select') return choiceName(primary, raw) ?? 'Untitled'
+  if (primary.type === 'multiSelect') {
+    const names = (Array.isArray(raw) ? raw : []).map((id) => choiceName(primary, id)).filter(Boolean)
+    return names.length > 0 ? names.join(', ') : 'Untitled'
+  }
+  if (primary.type === 'relation') return 'Untitled'
+  if (primary.type === 'checkbox') return raw === true ? 'Checked' : 'Untitled'
+  return String(raw)
+}
+
+/** One link target: a record id, a unique id prefix, or the text of the
+ *  linked record's first field. */
+function linkedRecordId(table, field, ref) {
+  const text = String(ref)
+  if (table.records.some((r) => r.id === text)) return text
+  const byLabel = table.records.filter((r) => recordLabel(table, r).toLowerCase() === text.toLowerCase())
+  if (byLabel.length === 1) return byLabel[0].id
+  if (byLabel.length > 1) fail(`Field "${field.name}": "${text}" matches ${byLabel.length} records in "${table.name}"; link by record id instead`)
+  const byPrefix = table.records.filter((r) => r.id.startsWith(text))
+  if (byPrefix.length === 1) return byPrefix[0].id
+  if (byPrefix.length > 1) fail(`Field "${field.name}": record id prefix "${text}" is ambiguous in "${table.name}"`)
+  fail(`Field "${field.name}": no record in "${table.name}" named "${text}" (and no record id matches)`)
+}
+
 // ---------------------------------------------------------------------------
 // Value conversion: field-name-keyed human values <-> field-id-keyed stored values
 // ---------------------------------------------------------------------------
@@ -203,7 +250,8 @@ function choiceIdFor(field, name) {
   return choice.id
 }
 
-async function coerceValue(field, value, projectId) {
+async function coerceValue(field, value, project) {
+  const projectId = project.id
   if (value === null) return null
   switch (field.type) {
     case 'text':
@@ -239,6 +287,16 @@ async function coerceValue(field, value, projectId) {
       const names = Array.isArray(value) ? value : [value]
       return names.map((n) => choiceIdFor(field, n))
     }
+    case 'relation': {
+      const target = linkedTable(project, field)
+      if (!target) fail(`Field "${field.name}" links to a table that no longer exists`)
+      const refs = Array.isArray(value) ? value : [value]
+      const ids = refs.map((ref) => linkedRecordId(target, field, ref))
+      if (field.relation.multiple === false && ids.length > 1) {
+        fail(`Field "${field.name}" links to a single record, got ${ids.length}`)
+      }
+      return ids
+    }
     case 'image': {
       const str = String(value)
       if (str.startsWith('app-image://')) return str
@@ -266,7 +324,7 @@ async function coerceValue(field, value, projectId) {
 }
 
 /** Applies field-name-keyed input values onto a record's field-id-keyed store. */
-async function applyValues(table, record, input, projectId) {
+async function applyValues(table, record, input, project) {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
     fail('Values must be a JSON object keyed by field name, e.g. {"Name": "Buy milk", "Status": "Todo"}')
   }
@@ -275,13 +333,14 @@ async function applyValues(table, record, input, projectId) {
     if (value === null) {
       delete record.values[field.id]
     } else {
-      record.values[field.id] = await coerceValue(field, value, projectId)
+      record.values[field.id] = await coerceValue(field, value, project)
     }
   }
 }
 
-/** Stored record -> agent-friendly shape (values keyed by field name, choices by name). */
-function humanize(table, record) {
+/** Stored record -> agent-friendly shape (values keyed by field name, choices
+ *  and linked records by name). */
+function humanize(table, record, project) {
   const values = {}
   for (const field of table.fields) {
     const raw = record.values[field.id]
@@ -292,6 +351,15 @@ function humanize(table, record) {
     } else if (field.type === 'multiSelect') {
       const names = (Array.isArray(raw) ? raw : []).map((id) => choiceName(field, id)).filter((n) => n !== undefined)
       if (names.length > 0) values[field.name] = names
+    } else if (field.type === 'relation') {
+      // Links whose record is gone are dropped, the way the app renders them.
+      const target = linkedTable(project, field)
+      if (!target) continue
+      const labels = (Array.isArray(raw) ? raw : [])
+        .map((id) => target.records.find((r) => r.id === id))
+        .filter((r) => r !== undefined)
+        .map((r) => recordLabel(target, r))
+      if (labels.length > 0) values[field.name] = labels
     } else {
       values[field.name] = raw
     }
@@ -312,7 +380,7 @@ function matchesWhere(humanized, where) {
 // Schema helpers
 // ---------------------------------------------------------------------------
 
-function buildField(name, type, choiceNames = []) {
+function buildField(name, type, choiceNames = [], relation) {
   if (!FIELD_TYPES.includes(type)) {
     fail(`Unknown field type "${type}". Valid types: ${FIELD_TYPES.join(', ')}`)
   }
@@ -322,6 +390,7 @@ function buildField(name, type, choiceNames = []) {
       choices: choiceNames.map((n, i) => ({ id: uuid(), name: n, color: CHOICE_COLORS[i % CHOICE_COLORS.length] }))
     }
   }
+  if (type === 'relation') field.relation = relation
   return field
 }
 
@@ -345,7 +414,7 @@ function deleteFieldEverywhere(table, fieldId) {
   }
 }
 
-function tableSchema(table) {
+function tableSchema(project, table) {
   return {
     id: table.id,
     name: table.name,
@@ -353,7 +422,10 @@ function tableSchema(table) {
     fields: table.fields.map((f) => ({
       name: f.name,
       type: f.type,
-      ...(f.options ? { choices: f.options.choices.map((c) => c.name) } : {})
+      ...(f.options ? { choices: f.options.choices.map((c) => c.name) } : {}),
+      ...(f.type === 'relation'
+        ? { linkTable: linkedTable(project, f)?.name ?? null, multiple: f.relation?.multiple !== false }
+        : {})
     })),
     views: table.views.map((v) => ({ name: v.name, type: v.type }))
   }
@@ -366,7 +438,7 @@ function schemaOf(project, table) {
     name: project.name,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
-    tables: (table ? [table] : project.tables).map(tableSchema)
+    tables: (table ? [table] : project.tables).map((t) => tableSchema(project, t))
   }
 }
 
@@ -381,12 +453,26 @@ function buildTable(name, fields) {
   }
 }
 
-/** Turns a --fields JSON array into field definitions; defaults to one text field. */
-function fieldsFromFlag(raw) {
+/**
+ * Turns a --fields JSON array into field definitions; defaults to one text
+ * field. A relation spec names its target with `linkTable` (and may set
+ * `multiple`); `self` is the table being created, so it can link to itself.
+ */
+function fieldsFromFlag(raw, project, self) {
   if (!raw) return [buildField('Name', 'text')]
   const specs = parseJsonArg(raw, '--fields')
   if (!Array.isArray(specs) || specs.length === 0) fail('--fields must be a non-empty JSON array')
-  const fields = specs.map((s) => buildField(String(s.name), s.type, s.choices ?? []))
+  const scope = { ...project, tables: [...project.tables.filter((t) => t.id !== self.id), self] }
+  const fields = specs.map((s) =>
+    buildField(
+      String(s.name),
+      s.type,
+      s.choices ?? [],
+      s.type === 'relation'
+        ? { tableId: linkTargetFor(scope, s.linkTable, String(s.name)).id, multiple: s.multiple !== false }
+        : undefined
+    )
+  )
   const names = fields.map((f) => f.name.toLowerCase())
   if (new Set(names).size !== names.length) fail('--fields contains duplicate field names')
   return fields
@@ -453,7 +539,11 @@ COMMANDS
                                            Create a project with one table. --fields is a JSON
                                            array like
                                            '[{"name":"Title","type":"text"},
-                                             {"name":"Status","type":"select","choices":["Todo","Done"]}]'
+                                             {"name":"Status","type":"select","choices":["Todo","Done"]},
+                                             {"name":"Author","type":"relation","linkTable":"People"}]'
+                                           A relation spec names its target table with
+                                           "linkTable" (the table being created counts) and may
+                                           set "multiple": false to allow only one link.
                                            Default: a single "Name" text field.
                                            --table names the table (default "Table").
   delete-project <project> --yes           Delete a project permanently (requires --yes)
@@ -468,6 +558,9 @@ COMMANDS
                                            a project always keeps at least one table)
   add-field <project> <name> <type> [--choices "A,B,C"] [--table NAME]
                                            Add a field. Types: ${FIELD_TYPES.join(', ')}
+                                           A relation field takes --link-table <name>, the table
+                                           in the same project its records link to (may be its
+                                           own table), plus --single to allow only one link.
   delete-field <project> <name> [--table NAME]
                                            Remove a field and all its values
   list-records <project> [--table NAME] [--where JSON] [--limit N] [--offset N]
@@ -492,6 +585,9 @@ VALUE FORMATS (per field type, when writing)
   date          "YYYY-MM-DD"
   select        choice name as string — unknown names are created automatically
   multiSelect   array of choice names — unknown names are created automatically
+  relation      array of linked records, each a record id (unique prefixes work) or the
+                text of that record's first field; a single value is accepted for one link.
+                Read back as the linked records' names.
   image         path to a local image file (copied into the app's storage),
                 or an existing app-image:/// URL
   audio         path to a local audio file (copied into the app's storage),
@@ -506,6 +602,8 @@ EXAMPLES
   crow update-record "My Tasks" 3f2a '{"Status":"Done"}'
   crow create-table "My Tasks" People --fields '[{"name":"Name","type":"text"}]'
   crow add-record "My Tasks" '{"Name":"Ada"}' --table People
+  crow add-field "My Tasks" Owner relation --link-table People --single
+  crow add-record "My Tasks" '{"Name":"Ship 1.0","Owner":"Ada"}'
 `
 
 // ---------------------------------------------------------------------------
@@ -540,13 +638,15 @@ const commands = {
     const name = positional[0]
     if (!name) fail('Usage: create-project <name> [--fields JSON] [--table NAME]')
     const tableName = typeof flags.table === 'string' ? flags.table : 'Table'
+    const table = buildTable(tableName, [])
     const project = {
       id: uuid(),
       name,
       createdAt: now(),
       updatedAt: now(),
-      tables: [buildTable(tableName, fieldsFromFlag(flags.fields))]
+      tables: [table]
     }
+    table.fields = fieldsFromFlag(flags.fields, project, table)
     await saveProject(project)
     output(schemaOf(project))
   },
@@ -585,7 +685,8 @@ const commands = {
       if (project.tables.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
         fail(`Project "${project.name}" already has a table named "${name}"`)
       }
-      const table = buildTable(name, fieldsFromFlag(flags.fields))
+      const table = buildTable(name, [])
+      table.fields = fieldsFromFlag(flags.fields, project, table)
       project.tables.push(table)
       return schemaOf(project, table)
     })
@@ -612,6 +713,13 @@ const commands = {
       if (project.tables.length <= 1) fail(`"${table.name}" is the only table in "${project.name}"; delete the project instead.`)
       if (flags.yes !== true) fail(`Refusing to delete table "${table.name}" (${table.records.length} records). Re-run with --yes to confirm.`)
       project.tables = project.tables.filter((t) => t.id !== table.id)
+      // Matches the app: a link into a table that's gone has nothing left to
+      // show, so the field goes with it.
+      for (const other of project.tables) {
+        for (const field of other.fields.filter((f) => f.relation?.tableId === table.id)) {
+          deleteFieldEverywhere(other, field.id)
+        }
+      }
       return { id: table.id, name: table.name, recordCount: table.records.length }
     })
     output({ deleted })
@@ -619,12 +727,16 @@ const commands = {
 
   async 'add-field'({ positional, flags }) {
     const [ref, name, type] = positional
-    if (!ref || !name || !type) fail('Usage: add-field <project> <name> <type> [--choices "A,B,C"]')
+    if (!ref || !name || !type) fail('Usage: add-field <project> <name> <type> [--choices "A,B,C"] [--link-table NAME] [--single]')
     const choices = typeof flags.choices === 'string' ? flags.choices.split(',').map((c) => c.trim()).filter(Boolean) : []
     const schema = await mutateProject(ref, (project) => {
       const table = resolveTable(project, flags.table)
       assertFieldNameFree(table, name)
-      table.fields.push(buildField(name, type, choices))
+      const relation =
+        type === 'relation'
+          ? { tableId: linkTargetFor(project, flags['link-table'], name).id, multiple: flags.single !== true }
+          : undefined
+      table.fields.push(buildField(name, type, choices, relation))
       return schemaOf(project, table)
     })
     output(schema)
@@ -644,7 +756,7 @@ const commands = {
   async 'list-records'({ positional, flags }) {
     const project = await resolveProject(positional[0] ?? fail('Usage: list-records <project> [--table NAME] [--where JSON] [--limit N] [--offset N]'))
     const table = resolveTable(project, flags.table)
-    let records = table.records.map((r) => humanize(table, r))
+    let records = table.records.map((r) => humanize(table, r, project))
     if (typeof flags.where === 'string') {
       const where = parseJsonArg(flags.where, '--where')
       for (const name of Object.keys(where)) resolveField(table, name)
@@ -662,7 +774,7 @@ const commands = {
     if (!ref || !recordRef) fail('Usage: get-record <project> <record-id> [--table NAME]')
     const project = await resolveProject(ref)
     const table = resolveTable(project, flags.table)
-    output(humanize(table, resolveRecord(table, recordRef)))
+    output(humanize(table, resolveRecord(table, recordRef), project))
   },
 
   async 'add-record'({ positional, flags }) {
@@ -675,13 +787,13 @@ const commands = {
     const created = []
     for (const values of inputs) {
       const record = { id: uuid(), createdAt: now(), values: {} }
-      await applyValues(table, record, values, project.id)
+      await applyValues(table, record, values, project)
       table.records.push(record)
       created.push(record)
     }
     project.updatedAt = now()
     await saveProject(project)
-    output({ table: table.name, created: created.map((r) => humanize(table, r)) })
+    output({ table: table.name, created: created.map((r) => humanize(table, r, project)) })
   },
 
   async 'update-record'({ positional, flags }) {
@@ -691,10 +803,10 @@ const commands = {
     const project = await resolveProject(ref)
     const table = resolveTable(project, flags.table)
     const record = resolveRecord(table, recordRef)
-    await applyValues(table, record, input, project.id)
+    await applyValues(table, record, input, project)
     project.updatedAt = now()
     await saveProject(project)
-    output(humanize(table, record))
+    output(humanize(table, record, project))
   },
 
   async 'delete-record'({ positional, flags }) {
@@ -706,7 +818,7 @@ const commands = {
     table.records = table.records.filter((r) => r.id !== record.id)
     project.updatedAt = now()
     await saveProject(project)
-    output({ deleted: humanize(table, record) })
+    output({ deleted: humanize(table, record, project) })
   },
 
   async help() {

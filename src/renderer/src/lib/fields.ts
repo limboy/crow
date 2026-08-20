@@ -8,6 +8,7 @@ import {
   Link2,
   SquareCheck,
   Tags,
+  Waypoints,
   type LucideIcon
 } from 'lucide-react'
 import type {
@@ -15,7 +16,9 @@ import type {
   Field,
   FieldType,
   FilterOperator,
-  SelectChoice
+  RecordRow,
+  SelectChoice,
+  Table
 } from '@shared/types'
 
 export interface FieldTypeInfo {
@@ -33,7 +36,8 @@ export const FIELD_TYPES: FieldTypeInfo[] = [
   { type: 'checkbox', label: 'Checkbox', icon: SquareCheck },
   { type: 'url', label: 'URL', icon: Link2 },
   { type: 'image', label: 'Image', icon: ImageIcon },
-  { type: 'audio', label: 'Audio', icon: AudioLines }
+  { type: 'audio', label: 'Audio', icon: AudioLines },
+  { type: 'relation', label: 'Link to records', icon: Waypoints }
 ]
 
 export function fieldTypeInfo(type: FieldType): FieldTypeInfo {
@@ -97,12 +101,46 @@ export function choicesByIds(field: Field, ids: unknown): SelectChoice[] {
     .filter((c): c is SelectChoice => c !== undefined)
 }
 
+/** The table a relation field links into, if it's still around. */
+export function relationTable(field: Field, tables: Table[]): Table | undefined {
+  if (field.type !== 'relation' || !field.relation) return undefined
+  return tables.find((t) => t.id === field.relation!.tableId)
+}
+
+/** A relation cell always stores an array of record ids — one entry at most
+ *  when the field isn't `multiple` — so toggling that setting never
+ *  invalidates what's already stored. */
+export function linkedRecordIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((id): id is string => typeof id === 'string')
+}
+
+/** Linked records in link order. Ids whose record is gone (deleted in the
+ *  other table) simply drop out, the way an unknown choice id does. */
+export function linkedRecords(field: Field, value: unknown, tables: Table[]): RecordRow[] {
+  const target = relationTable(field, tables)
+  if (!target) return []
+  return linkedRecordIds(value)
+    .map((id) => target.records.find((r) => r.id === id))
+    .filter((r): r is RecordRow => r !== undefined)
+}
+
+/** How a record reads when linked from another table: its first field's text.
+ *  That field can itself be a relation, which is why this doesn't resolve
+ *  links — one level is enough to name a row, and it can't recurse. */
+export function recordLabel(table: Table, record: RecordRow): string {
+  const primary = table.fields[0]
+  const text = primary ? displayValue(primary, record.values[primary.id]) : ''
+  return text || 'Untitled'
+}
+
 export function isEmptyValue(field: Field, value: unknown): boolean {
   if (value === null || value === undefined) return true
   switch (field.type) {
     case 'checkbox':
       return value !== true
     case 'multiSelect':
+    case 'relation':
       return !Array.isArray(value) || value.length === 0
     case 'select':
       return choiceById(field, value) === undefined
@@ -113,8 +151,10 @@ export function isEmptyValue(field: Field, value: unknown): boolean {
   }
 }
 
-/** Plain-text rendering of a value, used for search, sorting and fallbacks. */
-export function displayValue(field: Field, value: unknown): string {
+/** Plain-text rendering of a value, used for search, sorting and fallbacks.
+ *  `tables` only matters for relation fields, whose text lives in another
+ *  table; callers without a project in reach can leave it off and get ''. */
+export function displayValue(field: Field, value: unknown, tables: Table[] = []): string {
   if (isEmptyValue(field, value)) return ''
   switch (field.type) {
     case 'select':
@@ -123,6 +163,13 @@ export function displayValue(field: Field, value: unknown): string {
       return choicesByIds(field, value)
         .map((c) => c.name)
         .join(', ')
+    case 'relation': {
+      const target = relationTable(field, tables)
+      if (!target) return ''
+      return linkedRecords(field, value, tables)
+        .map((record) => recordLabel(target, record))
+        .join(', ')
+    }
     case 'checkbox':
       return value === true ? 'Checked' : ''
     case 'number':
@@ -190,6 +237,12 @@ export function operatorsFor(field: Field): OperatorInfo[] {
       return [
         { value: 'is', label: 'is checked', needsValue: false },
         { value: 'isNot', label: 'is unchecked', needsValue: false }
+      ]
+    case 'relation':
+      return [
+        { value: 'contains', label: 'links to', needsValue: true },
+        { value: 'notContains', label: 'does not link to', needsValue: true },
+        ...isEmptyOps
       ]
     case 'image':
     case 'audio':

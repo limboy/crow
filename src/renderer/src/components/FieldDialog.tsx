@@ -15,6 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -30,6 +31,7 @@ import {
   FIELD_TYPES,
   nextChoiceColor
 } from '@/lib/fields'
+import { useProjectTables } from '@/lib/relations'
 import { cn } from '@/lib/utils'
 
 const uuid = (): string => crypto.randomUUID()
@@ -55,6 +57,11 @@ export function FieldDialog({
   const [type, setType] = useState<FieldType>('text')
   const [choices, setChoices] = useState<SelectChoice[]>([])
   const [newChoice, setNewChoice] = useState('')
+  const [relationTableId, setRelationTableId] = useState('')
+  const [relationMultiple, setRelationMultiple] = useState(true)
+  // A relation can point at any table in the project, including its own — a
+  // task with sub-tasks, say.
+  const tables = useProjectTables()
 
   useEffect(() => {
     if (open) {
@@ -62,10 +69,16 @@ export function FieldDialog({
       setType(field?.type ?? defaultType ?? 'text')
       setChoices(field?.options?.choices ?? [])
       setNewChoice('')
+      setRelationTableId(field?.relation?.tableId ?? tables[0]?.id ?? '')
+      setRelationMultiple(field?.relation?.multiple ?? true)
     }
   }, [open, field])
 
   const hasChoices = type === 'select' || type === 'multiSelect'
+  const isRelation = type === 'relation'
+  // The linked table is the one thing a relation can't do without; everything
+  // else about a field has a sensible default.
+  const canSubmit = name.trim() !== '' && (!isRelation || relationTableId !== '')
 
   const addChoice = (): void => {
     const trimmed = newChoice.trim()
@@ -76,12 +89,13 @@ export function FieldDialog({
 
   const handleSubmit = (): void => {
     const trimmed = name.trim()
-    if (!trimmed) return
+    if (!canSubmit) return
     onSubmit({
       id: field?.id ?? uuid(),
       name: trimmed,
       type,
-      options: hasChoices ? { choices } : undefined
+      options: hasChoices ? { choices } : undefined,
+      relation: isRelation ? { tableId: relationTableId, multiple: relationMultiple } : undefined
     })
     onOpenChange(false)
   }
@@ -134,6 +148,35 @@ export function FieldDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {isRelation && (
+            <div className="flex flex-col gap-1.5">
+              <Label>Linked table</Label>
+              <Select
+                items={Object.fromEntries(tables.map((t) => [t.id, t.name]))}
+                value={relationTableId}
+                onValueChange={(v) => setRelationTableId(v as string)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Pick a table" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tables.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <label className="mt-1 flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={relationMultiple}
+                  onCheckedChange={(checked) => setRelationMultiple(checked === true)}
+                />
+                Allow linking multiple records
+              </label>
+            </div>
+          )}
 
           {hasChoices && (
             <div className="flex flex-col gap-1.5">
@@ -221,7 +264,7 @@ export function FieldDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!name.trim()}>
+          <Button onClick={handleSubmit} disabled={!canSubmit}>
             {field ? 'Save' : 'Create field'}
           </Button>
         </DialogFooter>

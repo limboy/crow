@@ -22,6 +22,7 @@ import { GroupSelect } from '@/components/toolbar/GroupSelect'
 import { groupRecords, UNCATEGORIZED, type RecordGroup } from '@/lib/derive'
 import { displayValue, isEmptyValue } from '@/lib/fields'
 import * as ops from '@/lib/ops'
+import { useProjectTables } from '@/lib/relations'
 import type { TableUpdater } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 
@@ -296,7 +297,8 @@ function KanbanCard({
   onClick?: () => void
   className?: string
 }): React.JSX.Element {
-  const title = titleField ? displayValue(titleField, record.values[titleField.id]) : ''
+  const tables = useProjectTables()
+  const title = titleField ? displayValue(titleField, record.values[titleField.id], tables) : ''
   const detailFields = cardFields.filter(
     (f) => f.id !== titleField?.id && !isEmptyValue(f, record.values[f.id])
   )

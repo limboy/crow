@@ -42,7 +42,7 @@ custom tool/MCP wrapper or a `CLAUDE.md` / `AGENTS.md` snippet).
 | `create-table <project> <name> [--fields JSON]` | Add a table |
 | `rename-table <project> <table> --to <new-name>` | Rename a table |
 | `delete-table <project> <table> --yes` | Delete a table (requires `--yes`) |
-| `add-field <project> <name> <type> [--choices "A,B,C"]` | Add a field |
+| `add-field <project> <name> <type> [--choices "A,B,C"] [--link-table NAME]` | Add a field |
 | `delete-field <project> <name>` | Remove a field everywhere |
 | `list-records <project> [--where JSON] [--limit N] [--offset N]` | Query records |
 | `get-record <project> <record-id>` | Show one record |
@@ -74,6 +74,21 @@ crow create-table "My Tasks" People --fields '[{"name":"Name","type":"text"}]'
 crow add-record "My Tasks" '{"Name":"Ada"}' --table People
 crow list-records "My Tasks" --table People
 ```
+
+## Linking tables
+
+A `relation` field links records to records in another table of the same
+project (or in its own — sub-tasks, replies). `--link-table` names the target,
+and `--single` limits a cell to one link:
+
+```bash
+crow add-field "My Tasks" Owner relation --link-table People --single
+crow add-record "My Tasks" '{"Name":"Ship 1.0","Owner":"Ada"}'
+```
+
+Links are written by record id or by the text of the linked record's first
+field (`"Ada"` above), and read back as those names. A `--fields` spec says the
+same thing as `{"name":"Owner","type":"relation","linkTable":"People","multiple":false}`.
 
 Projects saved before multi-table support are read as a single table named
 after the project; the file itself is upgraded the next time it's written.

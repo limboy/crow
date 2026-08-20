@@ -27,6 +27,7 @@ import { FieldDialog } from '@/components/FieldDialog'
 import { AudioEditor } from '@/components/editors/AudioEditor'
 import { DateEditor } from '@/components/editors/DateEditor'
 import { ImageEditor } from '@/components/editors/ImageEditor'
+import { RelationEditor } from '@/components/editors/RelationEditor'
 import { SelectEditor } from '@/components/editors/SelectEditor'
 import { FieldsPopover } from '@/components/toolbar/FieldsPopover'
 import { FilterPopover } from '@/components/toolbar/FilterPopover'
@@ -36,6 +37,7 @@ import { RowHeightSelect } from '@/components/toolbar/RowHeightSelect'
 import { applyFilters, applySorts, groupRecords, type RecordGroup } from '@/lib/derive'
 import { fieldTypeInfo } from '@/lib/fields'
 import * as ops from '@/lib/ops'
+import { useProjectTables } from '@/lib/relations'
 import type { TableUpdater } from '@/lib/queries'
 import { rowHeightInfo, type RowHeightInfo } from '@/lib/rowHeight'
 import { useFileDrop } from '@/lib/useFileDrop'
@@ -61,6 +63,9 @@ export function TableView({
   onOpenRecord: (recordId: string) => void
 }): React.JSX.Element {
   const config = view.config
+  // Sorting and grouping by a relation field compares the labels of the
+  // linked records, which live in a sibling table.
+  const tables = useProjectTables()
   const [fieldDialog, setFieldDialog] = useState<{ field?: Field; insertIndex?: number } | null>(
     null
   )
@@ -89,7 +94,7 @@ export function TableView({
   }, [table.records])
 
   // Clicking anywhere outside the table clears the selected-cell highlight.
-  // Popover editors (select/date/image/audio) render into a portal outside
+  // Popover editors (select/date/image/audio/relation) render into a portal outside
   // the table DOM, so a click inside one of those doesn't count as "outside".
   useEffect(() => {
     const onPointerDown = (e: MouseEvent): void => {
@@ -109,10 +114,11 @@ export function TableView({
   const derived = applySorts(
     applyFilters(table.records, config.filters, table.fields),
     config.sorts,
-    table.fields
+    table.fields,
+    tables
   )
   const groups: RecordGroup[] | null = groupField
-    ? groupRecords(derived, groupField).filter((g) => g.records.length > 0)
+    ? groupRecords(derived, groupField, tables).filter((g) => g.records.length > 0)
     : null
 
   const selectedVisibleCount = derived.reduce(
@@ -639,7 +645,8 @@ function CellContent({
     field.type === 'multiSelect' ||
     field.type === 'date' ||
     field.type === 'image' ||
-    field.type === 'audio'
+    field.type === 'audio' ||
+    field.type === 'relation'
   ) {
     return (
       <Popover open={editing} onOpenChange={setEditing}>
@@ -676,7 +683,7 @@ function CellContent({
             'p-0',
             field.type === 'image' || field.type === 'audio'
               ? 'w-72 p-3'
-              : field.type === 'date'
+              : field.type === 'date' || field.type === 'relation'
                 ? 'w-64'
                 : 'w-52'
           )}
@@ -690,6 +697,13 @@ function CellContent({
             <ImageEditor projectId={projectId} value={value} onChange={onChange} />
           ) : field.type === 'audio' ? (
             <AudioEditor projectId={projectId} value={value} onChange={onChange} />
+          ) : field.type === 'relation' ? (
+            <RelationEditor
+              field={field}
+              value={value}
+              onChange={onChange}
+              onDone={() => setEditing(false)}
+            />
           ) : (
             <SelectEditor
               field={field}

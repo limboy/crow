@@ -1,5 +1,5 @@
-import type { Field, FilterRule, RecordRow, SelectChoice, SortRule } from '@shared/types'
-import { choiceById, displayValue, isEmptyValue, operatorsFor } from './fields'
+import type { Field, FilterRule, RecordRow, SelectChoice, SortRule, Table } from '@shared/types'
+import { choiceById, displayValue, isEmptyValue, linkedRecordIds, operatorsFor } from './fields'
 
 function fieldMap(fields: Field[]): Map<string, Field> {
   return new Map(fields.map((f) => [f.id, f]))
@@ -31,6 +31,12 @@ function matchesRule(record: RecordRow, rule: FilterRule, field: Field): boolean
     }
     case 'multiSelect': {
       const has = Array.isArray(value) && value.includes(target)
+      return rule.operator === 'contains' ? has : !has
+    }
+    // Matched by linked record id, so filtering never has to look into the
+    // other table.
+    case 'relation': {
+      const has = linkedRecordIds(value).includes(String(target))
       return rule.operator === 'contains' ? has : !has
     }
     case 'number': {
@@ -96,7 +102,7 @@ export function applyFilters(records: RecordRow[], filters: FilterRule[], fields
   )
 }
 
-function compareValues(a: RecordRow, b: RecordRow, field: Field): number {
+function compareValues(a: RecordRow, b: RecordRow, field: Field, tables: Table[]): number {
   const va = a.values[field.id]
   const vb = b.values[field.id]
   const emptyA = isEmptyValue(field, va)
@@ -119,11 +125,18 @@ function compareValues(a: RecordRow, b: RecordRow, field: Field): number {
       return ia - ib
     }
     default:
-      return displayValue(field, va).localeCompare(displayValue(field, vb))
+      return displayValue(field, va, tables).localeCompare(displayValue(field, vb, tables))
   }
 }
 
-export function applySorts(records: RecordRow[], sorts: SortRule[], fields: Field[]): RecordRow[] {
+/** `tables` is only read to sort/group by a relation field, whose text lives
+ *  in another table; omitting it just makes those rows compare as equal. */
+export function applySorts(
+  records: RecordRow[],
+  sorts: SortRule[],
+  fields: Field[],
+  tables: Table[] = []
+): RecordRow[] {
   if (sorts.length === 0) return records
   const byId = fieldMap(fields)
   const valid = sorts.filter((s) => byId.has(s.fieldId))
@@ -131,7 +144,7 @@ export function applySorts(records: RecordRow[], sorts: SortRule[], fields: Fiel
   return [...records].sort((a, b) => {
     for (const sort of valid) {
       const field = byId.get(sort.fieldId)!
-      const cmp = compareValues(a, b, field)
+      const cmp = compareValues(a, b, field, tables)
       if (cmp !== 0) return sort.direction === 'asc' ? cmp : -cmp
     }
     return 0
@@ -152,7 +165,11 @@ export const UNCATEGORIZED = '__uncategorized__'
  * choice order, kept even when empty — kanban wants stable columns) plus an
  * "Uncategorized" bucket. Other types bucket by display value.
  */
-export function groupRecords(records: RecordRow[], field: Field): RecordGroup[] {
+export function groupRecords(
+  records: RecordRow[],
+  field: Field,
+  tables: Table[] = []
+): RecordGroup[] {
   if (field.type === 'select') {
     const choices = field.options?.choices ?? []
     const groups: RecordGroup[] = choices.map((choice) => ({
@@ -182,7 +199,7 @@ export function groupRecords(records: RecordRow[], field: Field): RecordGroup[] 
   const buckets = new Map<string, RecordGroup>()
   const empty: RecordGroup = { key: UNCATEGORIZED, label: 'Empty', records: [] }
   for (const record of records) {
-    const text = displayValue(field, record.values[field.id])
+    const text = displayValue(field, record.values[field.id], tables)
     if (text === '') {
       empty.records.push(record)
       continue

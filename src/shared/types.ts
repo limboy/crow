@@ -8,6 +8,7 @@ export type FieldType =
   | 'url'
   | 'image'
   | 'audio'
+  | 'relation'
 
 export type ChoiceColor =
   | 'gray'
@@ -27,6 +28,15 @@ export interface SelectChoice {
   color: ChoiceColor
 }
 
+/** Where a `relation` field's linked record ids come from. */
+export interface RelationOptions {
+  /** Table in the same project the links point into; a table may point at
+   *  itself (a task with sub-tasks, say). */
+  tableId: string
+  /** Whether a cell may hold more than one link. */
+  multiple: boolean
+}
+
 export interface Field {
   id: string
   name: string
@@ -34,6 +44,8 @@ export interface Field {
   options?: {
     choices: SelectChoice[]
   }
+  /** Only on `relation` fields: which table this one links to. */
+  relation?: RelationOptions
 }
 
 export interface RecordRow {

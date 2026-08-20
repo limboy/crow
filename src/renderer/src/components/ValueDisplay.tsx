@@ -1,9 +1,19 @@
 import { Check } from 'lucide-react'
 import type { Field } from '@shared/types'
-import { choiceById, choicesByIds, displayValue, isEmptyValue } from '@/lib/fields'
+import {
+  choiceById,
+  choicesByIds,
+  displayValue,
+  isEmptyValue,
+  linkedRecords,
+  recordLabel,
+  relationTable
+} from '@/lib/fields'
+import { useProjectTables } from '@/lib/relations'
 import { cn } from '@/lib/utils'
 import { AudioPlayer } from './AudioPlayer'
 import { ChoiceBadge } from './ChoiceBadge'
+import { RecordBadge } from './RecordBadge'
 
 /** Read-only rendering of a record value, shared by table cells and cards. */
 export function ValueDisplay({
@@ -18,6 +28,8 @@ export function ValueDisplay({
   /** Number of text lines to wrap to before truncating; 1 keeps the classic single-line clip. */
   lineClamp?: number
 }): React.JSX.Element | null {
+  // Only relation cells read this, but the hook has to run unconditionally.
+  const tables = useProjectTables()
   if (isEmptyValue(field, value)) return null
 
   // Tailwind needs literal class names to see at build time, so map rather than interpolate.
@@ -38,6 +50,17 @@ export function ValueDisplay({
           ))}
         </span>
       )
+    case 'relation': {
+      const target = relationTable(field, tables)
+      if (!target) return null
+      return (
+        <span className={cn('flex flex-wrap items-center gap-1', className)}>
+          {linkedRecords(field, value, tables).map((record) => (
+            <RecordBadge key={record.id} label={recordLabel(target, record)} />
+          ))}
+        </span>
+      )
+    }
     case 'checkbox':
       return (
         <span
@@ -88,6 +111,6 @@ export function ValueDisplay({
     case 'audio':
       return <AudioPlayer src={String(value)} className={cn('max-w-56', className)} />
     default:
-      return <span className={cn(wrapClass, className)}>{displayValue(field, value)}</span>
+      return <span className={cn(wrapClass, className)}>{displayValue(field, value, tables)}</span>
   }
 }

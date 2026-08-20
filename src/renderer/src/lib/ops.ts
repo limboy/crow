@@ -40,25 +40,42 @@ export function renameTable(project: Project, tableId: string, name: string): Pr
 
 /** Deep-copies a table so edits to the copy can't reach back into the
  *  original. Field/record/view ids are kept: they're only ever resolved
- *  within their own table, so a copy that reuses them stays self-consistent. */
+ *  within their own table, so a copy that reuses them stays self-consistent.
+ *  Self-relations are re-pointed at the copy for the same reason — and since
+ *  record ids are kept too, the links still resolve. */
 export function duplicateTable(project: Project, tableId: string): Project {
   const index = project.tables.findIndex((t) => t.id === tableId)
   if (index === -1) return project
   const source = project.tables[index]
+  const cloneId = crypto.randomUUID()
   const clone: Table = {
     ...structuredClone(source),
-    id: crypto.randomUUID(),
+    id: cloneId,
     name: `${source.name} copy`
   }
+  clone.fields = clone.fields.map((f) =>
+    f.relation?.tableId === source.id
+      ? { ...f, relation: { ...f.relation, tableId: cloneId } }
+      : f
+  )
   const tables = [...project.tables]
   tables.splice(index + 1, 0, clone)
   return { ...project, tables }
 }
 
-/** A project always keeps at least one table, mirroring how views work. */
+/** A project always keeps at least one table, mirroring how views work.
+ *  Relation fields elsewhere that pointed at the deleted table go with it —
+ *  a link into a table that's gone has nothing left to show. */
 export function deleteTable(project: Project, tableId: string): Project {
   if (project.tables.length <= 1) return project
-  return { ...project, tables: project.tables.filter((t) => t.id !== tableId) }
+  const tables = project.tables
+    .filter((t) => t.id !== tableId)
+    .map((table) =>
+      table.fields
+        .filter((f) => f.relation?.tableId === tableId)
+        .reduce((acc, field) => deleteField(acc, field.id), table)
+    )
+  return { ...project, tables }
 }
 
 // --- Views, records and fields, within one table ----------------------------

@@ -35,6 +35,7 @@ import { GalleryView } from '@/views/GalleryView'
 import { CalendarView } from '@/views/CalendarView'
 import * as ops from '@/lib/ops'
 import { applyFilters } from '@/lib/derive'
+import { ProjectTablesContext } from '@/lib/relations'
 import {
   useProject,
   useProjects,
@@ -115,77 +116,81 @@ export default function ProjectPage(): React.JSX.Element {
   const filtered = displayedRecords.length !== records.length
 
   return (
-    <div className="flex h-full flex-col">
-      <PageHeader>
-        <span className="shrink-0 px-1 text-sm font-semibold tracking-tight">{project.name}</span>
-        <Separator orientation="vertical" className="mx-1 !h-4" />
-        <TableTabs
-          project={project}
-          activeTableId={activeTable?.id}
-          onSelect={setActiveTableId}
-          update={updateProject}
-        />
-        <span className="ml-auto shrink-0 pl-2 pr-1 text-xs text-muted-foreground">
-          {displayedRecords.length} record{displayedRecords.length === 1 ? '' : 's'}
-          {filtered ? ` of ${records.length}` : ''}
-        </span>
-      </PageHeader>
+    // Relation cells resolve the records they link to through this — it's the
+    // one thing in a view that has to see past its own table.
+    <ProjectTablesContext.Provider value={tables}>
+      <div className="flex h-full flex-col">
+        <PageHeader>
+          <span className="shrink-0 px-1 text-sm font-semibold tracking-tight">{project.name}</span>
+          <Separator orientation="vertical" className="mx-1 !h-4" />
+          <TableTabs
+            project={project}
+            activeTableId={activeTable?.id}
+            onSelect={setActiveTableId}
+            update={updateProject}
+          />
+          <span className="ml-auto shrink-0 pl-2 pr-1 text-xs text-muted-foreground">
+            {displayedRecords.length} record{displayedRecords.length === 1 ? '' : 's'}
+            {filtered ? ` of ${records.length}` : ''}
+          </span>
+        </PageHeader>
 
-      {activeTable && (
-        <ViewTabs
-          table={activeTable}
-          activeViewId={activeView?.id}
-          onSelect={selectView}
-          update={update}
-        />
-      )}
+        {activeTable && (
+          <ViewTabs
+            table={activeTable}
+            activeViewId={activeView?.id}
+            onSelect={selectView}
+            update={update}
+          />
+        )}
 
-      <div className="min-h-0 flex-1">
-        {activeTable && activeView?.type === 'table' && (
-          <TableView
+        <div className="min-h-0 flex-1">
+          {activeTable && activeView?.type === 'table' && (
+            <TableView
+              projectId={project.id}
+              table={activeTable}
+              view={activeView}
+              update={update}
+              onOpenRecord={setOpenRecordId}
+            />
+          )}
+          {activeTable && activeView?.type === 'kanban' && (
+            <KanbanView
+              table={activeTable}
+              view={activeView}
+              update={update}
+              onOpenRecord={setOpenRecordId}
+            />
+          )}
+          {activeTable && activeView?.type === 'gallery' && (
+            <GalleryView
+              table={activeTable}
+              view={activeView}
+              update={update}
+              onOpenRecord={setOpenRecordId}
+            />
+          )}
+          {activeTable && activeView?.type === 'calendar' && (
+            <CalendarView
+              table={activeTable}
+              view={activeView}
+              update={update}
+              onOpenRecord={setOpenRecordId}
+            />
+          )}
+        </div>
+
+        {activeTable && (
+          <RecordSheet
             projectId={project.id}
             table={activeTable}
-            view={activeView}
+            recordId={openRecordId}
+            onClose={() => setOpenRecordId(null)}
             update={update}
-            onOpenRecord={setOpenRecordId}
-          />
-        )}
-        {activeTable && activeView?.type === 'kanban' && (
-          <KanbanView
-            table={activeTable}
-            view={activeView}
-            update={update}
-            onOpenRecord={setOpenRecordId}
-          />
-        )}
-        {activeTable && activeView?.type === 'gallery' && (
-          <GalleryView
-            table={activeTable}
-            view={activeView}
-            update={update}
-            onOpenRecord={setOpenRecordId}
-          />
-        )}
-        {activeTable && activeView?.type === 'calendar' && (
-          <CalendarView
-            table={activeTable}
-            view={activeView}
-            update={update}
-            onOpenRecord={setOpenRecordId}
           />
         )}
       </div>
-
-      {activeTable && (
-        <RecordSheet
-          projectId={project.id}
-          table={activeTable}
-          recordId={openRecordId}
-          onClose={() => setOpenRecordId(null)}
-          update={update}
-        />
-      )}
-    </div>
+    </ProjectTablesContext.Provider>
   )
 }
 
