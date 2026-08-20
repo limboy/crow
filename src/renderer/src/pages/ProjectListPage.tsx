@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { Download, Plus } from 'lucide-react'
 import type { ProjectMeta } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -13,13 +13,14 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { PageHeader } from '@/components/PageHeader'
-import { useCreateProject, useProjects } from '@/lib/queries'
+import { useCreateProject, useImportProject, useProjects } from '@/lib/queries'
 import { timeAgo } from '@/lib/format'
 
 export default function ProjectListPage(): React.JSX.Element {
   const navigate = useNavigate()
   const { data: projects, isLoading } = useProjects()
   const createProject = useCreateProject()
+  const importProject = useImportProject()
 
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
@@ -30,6 +31,14 @@ export default function ProjectListPage(): React.JSX.Element {
         setCreateOpen(false)
         setNewName('')
         navigate(`/project/${project.id}`)
+      }
+    })
+  }
+
+  const handleImport = (): void => {
+    importProject.mutate(undefined, {
+      onSuccess: (project) => {
+        if (project) navigate(`/project/${project.id}`)
       }
     })
   }
@@ -48,10 +57,19 @@ export default function ProjectListPage(): React.JSX.Element {
             </div>
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center">
+          <div className="flex h-full items-center justify-center gap-2">
             <Button size="sm" onClick={() => setCreateOpen(true)}>
               <Plus data-slot="icon" />
               New project
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleImport}
+              disabled={importProject.isPending}
+            >
+              <Download data-slot="icon" />
+              Import project
             </Button>
           </div>
         )}

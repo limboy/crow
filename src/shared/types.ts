@@ -114,6 +114,24 @@ export interface Project {
   views: View[]
 }
 
+/** One image/audio file carried inside an exported bundle, base64-encoded. */
+export interface ProjectBundleAsset {
+  kind: 'image' | 'audio'
+  /** Bare file name as stored in the project's `images/`/`audio/` folder. */
+  name: string
+  data: string
+}
+
+/** A whole project — schema, records, views, and its local media — in one
+ *  self-contained JSON file (`.crow`), so it can be shared or backed up. */
+export interface ProjectBundle {
+  format: 'crow-project'
+  version: number
+  exportedAt: string
+  project: Project
+  assets: ProjectBundleAsset[]
+}
+
 export interface ProjectMeta {
   id: string
   name: string
@@ -150,6 +168,12 @@ export interface Api {
   getProject: (id: string) => Promise<Project>
   saveProject: (project: Project) => Promise<void>
   deleteProject: (id: string) => Promise<void>
+  /** Writes the project and its media to a `.crow` file the user picks;
+   *  resolves with the saved path, or null if cancelled. */
+  exportProject: (id: string) => Promise<string | null>
+  /** Reads a `.crow` file the user picks in as a new project (fresh id, so
+   *  importing the same bundle twice gives two projects); null if cancelled. */
+  importProject: () => Promise<Project | null>
   /** Images and audio are stored alongside the project that owns them, so
    *  every picker/import call needs to know which project it's for. */
   pickImage: (projectId: string) => Promise<string | null>

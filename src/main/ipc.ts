@@ -2,6 +2,7 @@ import { BrowserWindow, dialog, ipcMain, Menu } from 'electron'
 import type { ConfirmDialogOptions, ContextMenuItem, Project } from '@shared/types'
 import { createProject, deleteProject, ensureProjectsRootDir, getProject, listProjects, saveProject } from './storage'
 import { importImageData, pickImage } from './images'
+import { exportProject, importProject } from './transfer'
 import { importAudioData, pickAudio } from './audio'
 import { getReadyUpdateVersion, installReadyUpdate } from './updater'
 import { defaultDataDir, getDataDir, setDataDir } from './config'
@@ -13,6 +14,10 @@ export function registerIpc(): void {
   ipcMain.handle('projects:get', (_e, id: string) => getProject(id))
   ipcMain.handle('projects:save', (_e, project: Project) => saveProject(project))
   ipcMain.handle('projects:delete', (_e, id: string) => deleteProject(id))
+  ipcMain.handle('projects:export', (e, id: string) =>
+    exportProject(BrowserWindow.fromWebContents(e.sender), id)
+  )
+  ipcMain.handle('projects:import', (e) => importProject(BrowserWindow.fromWebContents(e.sender)))
   ipcMain.handle('images:pick', (e, projectId: string) =>
     pickImage(BrowserWindow.fromWebContents(e.sender), projectId)
   )

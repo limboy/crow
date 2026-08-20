@@ -24,7 +24,7 @@ import {
   SidebarMenuItem,
   SidebarRail
 } from '@/components/ui/sidebar'
-import { useCreateProject, useDeleteProject, useProjects } from '@/lib/queries'
+import { useCreateProject, useDeleteProject, useImportProject, useProjects } from '@/lib/queries'
 import { isMac } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { UpdateButton } from '@/components/UpdateButton'
@@ -36,6 +36,7 @@ export function AppSidebar(): React.JSX.Element {
   const activeId = useMatch('/project/:id')?.params.id
   const { data: projects, isLoading } = useProjects()
   const createProject = useCreateProject()
+  const importProject = useImportProject()
 
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
@@ -51,6 +52,25 @@ export function AppSidebar(): React.JSX.Element {
     })
   }
 
+  const handleImport = (): void => {
+    importProject.mutate(undefined, {
+      onSuccess: (project) => {
+        if (project) navigate(`/project/${project.id}`)
+      }
+    })
+  }
+
+  // The + button offers both ways to get a project, keeping import as
+  // discoverable as create without spending another slot in the header row.
+  const handleAdd = async (): Promise<void> => {
+    const action = await window.api.showContextMenu([
+      { id: 'create', label: 'New project' },
+      { id: 'import', label: 'Import project…' }
+    ])
+    if (action === 'create') setCreateOpen(true)
+    else if (action === 'import') handleImport()
+  }
+
   return (
     <Sidebar>
       {/* Empty drag spacer: still reserves room for the macOS traffic lights
@@ -63,9 +83,9 @@ export function AppSidebar(): React.JSX.Element {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel className="cursor-default">Projects</SidebarGroupLabel>
-          <SidebarGroupAction title="New project" onClick={() => setCreateOpen(true)}>
+          <SidebarGroupAction title="Add project" onClick={handleAdd}>
             <Plus />
-            <span className="sr-only">New project</span>
+            <span className="sr-only">Add project</span>
           </SidebarGroupAction>
           <SidebarMenu>
             {isLoading ? null : projects && projects.length > 0 ? (
@@ -176,12 +196,15 @@ function ProjectMenuItem({
     e.preventDefault()
     const action = await window.api.showContextMenu([
       { id: 'rename', label: 'Rename' },
+      { id: 'export', label: 'Export…' },
       { id: 'sep', label: '', type: 'separator' },
       { id: 'delete', label: 'Delete', danger: true }
     ])
     if (action === 'rename') {
       setRenameValue(project.name)
       setRenameOpen(true)
+    } else if (action === 'export') {
+      void window.api.exportProject(project.id)
     } else if (action === 'delete') {
       void confirmDelete()
     }

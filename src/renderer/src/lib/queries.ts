@@ -65,6 +65,20 @@ export function useCreateProject() {
   })
 }
 
+/** Resolves with the newly imported project, or null if the user cancelled
+ *  (or the file was rejected — the main process reports that itself). */
+export function useImportProject() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => window.api.importProject(),
+    onSuccess: (project) => {
+      if (!project) return
+      queryClient.setQueryData(['project', project.id], project)
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    }
+  })
+}
+
 export function useDeleteProject() {
   const queryClient = useQueryClient()
   return useMutation({
