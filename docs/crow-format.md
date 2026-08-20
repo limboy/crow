@@ -1,9 +1,10 @@
 # The `.crow` file format
 
-A `.crow` file is one project — schema, records, views, and every image/audio
-file it owns — in a single UTF-8 JSON document. It's what **Export…** writes and
-**Import project…** reads, and it's plain JSON on purpose: you can generate one
-from any language without linking against the app.
+A `.crow` file is one project — its tables, their schemas, records and views,
+and every image/audio file it owns — in a single UTF-8 JSON document. It's what
+**Export…** writes and **Import project…** reads, and it's plain JSON on
+purpose: you can generate one from any language without linking against the
+app.
 
 This page documents the format well enough to write a generator. If you'd rather
 mutate an existing project than build one from scratch, `cli/crow.mjs` already
@@ -14,7 +15,7 @@ speaks a friendlier, name-based dialect — see [cli/README.md](../cli/README.md
 ```json
 {
   "format": "crow-project",
-  "version": 1,
+  "version": 2,
   "exportedAt": "2026-08-20T09:15:00.000Z",
   "project": { "…": "see below" },
   "assets": []
@@ -24,15 +25,20 @@ speaks a friendlier, name-based dialect — see [cli/README.md](../cli/README.md
 | Key | Required | Notes |
 | --- | --- | --- |
 | `format` | yes | Must be exactly `"crow-project"`, or the import is refused. |
-| `version` | yes | Format version. The app accepts anything `<= 1` and refuses newer. |
+| `version` | yes | Format version. The app accepts anything `<= 2` and refuses newer. |
 | `exportedAt` | no | ISO-8601 timestamp; informational only. |
 | `project` | yes | The project itself (below). |
 | `assets` | no | Base64 media (below). Omit or use `[]` when there's none. |
 
+Version 1 put a single table's `fields`, `records` and `views` directly on the
+`project`. Those files still import — they become a project with one table,
+named after the project — but write version 2 in anything new.
+
 Import validates only the envelope and that `project` has a string `name` plus
-array `fields`, `records`, and `views`. Everything past that is trusted, so a
-malformed field type or a record pointing at a missing field id won't be caught
-at import time — it just renders as empty. Get it right in the generator.
+either a `tables` array or (for version 1) array `fields`, `records`, and
+`views`. Everything past that is trusted, so a malformed field type or a record
+pointing at a missing field id won't be caught at import time — it just renders
+as empty. Get it right in the generator.
 
 ## `project`
 
@@ -42,9 +48,7 @@ at import time — it just renders as empty. Get it right in the generator.
   "name": "Reading List",
   "createdAt": "2026-08-20T09:00:00.000Z",
   "updatedAt": "2026-08-20T09:00:00.000Z",
-  "fields": [],
-  "records": [],
-  "views": []
+  "tables": []
 }
 ```
 
@@ -55,12 +59,35 @@ at import time — it just renders as empty. Get it right in the generator.
 | `icon` | no | Reserved — carried through saves but not rendered yet. |
 | `createdAt` | yes | ISO-8601. Preserved on import. |
 | `updatedAt` | yes | ISO-8601. Overwritten with the import time. |
+| `tables` | yes | The project's tables (below). A project needs at least one; they show as tabs in the app's header, in array order. |
+
+## `tables`
+
+```json
+{
+  "id": "tbl-books",
+  "name": "Books",
+  "fields": [],
+  "records": [],
+  "views": []
+}
+```
+
+| Key | Required | Notes |
+| --- | --- | --- |
+| `id` | yes | Unique within the project. |
+| `name` | yes | The tab label. |
 | `fields` | yes | Column definitions. |
 | `records` | yes | Rows. |
 | `views` | yes | Saved table/kanban/gallery/calendar configurations. |
 
-Ids for fields, records, choices, and views are opaque strings — anything unique
-within the project works. Only the **project** id is constrained by the
+**Tables don't reference each other.** Field, record, choice and view ids only
+have to be unique *within* their own table, and no field type points at another
+table — there's no link/relation type. Media is the one shared thing: images and
+audio live in a single per-project folder, so any table can use any of them.
+
+Ids for fields, records, choices, tables and views are opaque strings — anything
+unique within the table works. Only the **project** id is constrained by the
 `^[a-zA-Z0-9-]+$` pattern, because it becomes a directory name on disk.
 
 ## `fields`
@@ -130,15 +157,15 @@ column order in kanban and the sort order when sorting by that field.
 }
 ```
 
-`values` is keyed by **field id**. Omit a key (or use `null`) for an empty cell —
-there's no requirement that every record carry every field. Keys that match no
-field are kept on disk but ignored by the app, and `createdAt` is what a Calendar
+`values` is keyed by **field id**, from the same table. Omit a key (or use
+`null`) for an empty cell — there's no requirement that every record carry every
+field. Keys that match no field are kept on disk but ignored by the app, and `createdAt` is what a Calendar
 view falls back to when it has no date field selected.
 
 ## `views`
 
-Every view is `{ id, name, type, config }`. A project with no views opens on an
-empty state, so include at least one. Each `type` takes its own `config`:
+Every view is `{ id, name, type, config }`, and belongs to the table that holds
+it. A table with no views opens on an empty state, so include at least one. Each `type` takes its own `config`:
 
 ```json
 [

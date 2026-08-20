@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Plus, Trash2 } from 'lucide-react'
-import type { Field, Project, RecordRow, View } from '@shared/types'
+import type { Field, Table, RecordRow, View } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -36,7 +36,7 @@ import { RowHeightSelect } from '@/components/toolbar/RowHeightSelect'
 import { applyFilters, applySorts, groupRecords, type RecordGroup } from '@/lib/derive'
 import { fieldTypeInfo } from '@/lib/fields'
 import * as ops from '@/lib/ops'
-import type { ProjectUpdater } from '@/lib/queries'
+import type { TableUpdater } from '@/lib/queries'
 import { rowHeightInfo, type RowHeightInfo } from '@/lib/rowHeight'
 import { useFileDrop } from '@/lib/useFileDrop'
 import { cn } from '@/lib/utils'
@@ -48,14 +48,16 @@ const MIN_COLUMN_WIDTH = 100
 const MAX_COLUMN_WIDTH = 600
 
 export function TableView({
-  project,
+  projectId,
+  table,
   view,
   update,
   onOpenRecord
 }: {
-  project: Project
+  projectId: string
+  table: Table
   view: TableViewType
-  update: ProjectUpdater
+  update: TableUpdater
   onOpenRecord: (recordId: string) => void
 }): React.JSX.Element {
   const config = view.config
@@ -75,7 +77,7 @@ export function TableView({
   useEffect(() => {
     setSelectedRowIds((prev) => {
       if (prev.size === 0) return prev
-      const validIds = new Set(project.records.map((r) => r.id))
+      const validIds = new Set(table.records.map((r) => r.id))
       let changed = false
       const next = new Set<string>()
       prev.forEach((id) => {
@@ -84,7 +86,7 @@ export function TableView({
       })
       return changed ? next : prev
     })
-  }, [project.records])
+  }, [table.records])
 
   // Clicking anywhere outside the table clears the selected-cell highlight.
   // Popover editors (select/date/image/audio) render into a portal outside
@@ -101,13 +103,13 @@ export function TableView({
     return () => document.removeEventListener('mousedown', onPointerDown)
   }, [])
 
-  const visibleFields = project.fields.filter((f) => !config.hiddenFieldIds.includes(f.id))
-  const groupField = project.fields.find((f) => f.id === config.groupByFieldId)
+  const visibleFields = table.fields.filter((f) => !config.hiddenFieldIds.includes(f.id))
+  const groupField = table.fields.find((f) => f.id === config.groupByFieldId)
 
   const derived = applySorts(
-    applyFilters(project.records, config.filters, project.fields),
+    applyFilters(table.records, config.filters, table.fields),
     config.sorts,
-    project.fields
+    table.fields
   )
   const groups: RecordGroup[] | null = groupField
     ? groupRecords(derived, groupField).filter((g) => g.records.length > 0)
@@ -247,7 +249,7 @@ export function TableView({
     window.addEventListener('mouseup', onUp)
   }
 
-  const groupableFields = project.fields.filter((f) => f.type !== 'image' && f.type !== 'audio')
+  const groupableFields = table.fields.filter((f) => f.type !== 'image' && f.type !== 'audio')
   const heightInfo = rowHeightInfo(config.rowHeight)
 
   let rowNumber = 0
@@ -300,7 +302,7 @@ export function TableView({
           {visibleFields.map((field) => (
             <TableCell
               key={field.id}
-              projectId={project.id}
+              projectId={projectId}
               field={field}
               record={record}
               update={update}
@@ -321,17 +323,17 @@ export function TableView({
     <div className="flex h-full flex-col">
       <div className="flex h-10 shrink-0 items-center gap-1 border-b px-3">
         <FieldsPopover
-          fields={project.fields}
+          fields={table.fields}
           hiddenFieldIds={config.hiddenFieldIds}
           onChange={(hiddenFieldIds) => patchConfig({ hiddenFieldIds })}
         />
         <FilterPopover
-          fields={project.fields}
+          fields={table.fields}
           filters={config.filters}
           onChange={(filters) => patchConfig({ filters })}
         />
         <SortPopover
-          fields={project.fields}
+          fields={table.fields}
           sorts={config.sorts}
           onChange={(sorts) => patchConfig({ sorts })}
         />
@@ -361,9 +363,9 @@ export function TableView({
           </div>
         ) : (
           <span className="ml-auto text-xs text-muted-foreground">
-            {derived.length === project.records.length
+            {derived.length === table.records.length
               ? null
-              : `${derived.length} of ${project.records.length} records`}
+              : `${derived.length} of ${table.records.length} records`}
           </span>
         )}
       </div>
@@ -409,7 +411,7 @@ export function TableView({
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={() => {
-                            const index = project.fields.findIndex((f) => f.id === field.id)
+                            const index = table.fields.findIndex((f) => f.id === field.id)
                             setFieldDialog({ insertIndex: index })
                           }}
                         >
@@ -417,13 +419,13 @@ export function TableView({
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => {
-                            const index = project.fields.findIndex((f) => f.id === field.id)
+                            const index = table.fields.findIndex((f) => f.id === field.id)
                             setFieldDialog({ insertIndex: index + 1 })
                           }}
                         >
                           Insert right
                         </DropdownMenuItem>
-                        {project.fields.length > 1 && (
+                        {table.fields.length > 1 && (
                           <>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -568,7 +570,7 @@ function TableCell({
   projectId: string
   field: Field
   record: RecordRow
-  update: ProjectUpdater
+  update: TableUpdater
   heightInfo: RowHeightInfo
   width: number
   selected: boolean

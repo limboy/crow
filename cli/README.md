@@ -35,9 +35,13 @@ custom tool/MCP wrapper or a `CLAUDE.md` / `AGENTS.md` snippet).
 | Command | Purpose |
 | --- | --- |
 | `list-projects` | List all projects |
-| `create-project <name> [--fields JSON]` | Create a project with an optional schema |
+| `create-project <name> [--fields JSON] [--table NAME]` | Create a project with one table |
 | `delete-project <project> --yes` | Delete a project (requires `--yes`) |
-| `schema <project>` | Fields, choices, views, record count |
+| `schema <project> [--table NAME]` | Fields, choices, views, record count |
+| `list-tables <project>` | List the project's tables |
+| `create-table <project> <name> [--fields JSON]` | Add a table |
+| `rename-table <project> <table> --to <new-name>` | Rename a table |
+| `delete-table <project> <table> --yes` | Delete a table (requires `--yes`) |
 | `add-field <project> <name> <type> [--choices "A,B,C"]` | Add a field |
 | `delete-field <project> <name>` | Remove a field everywhere |
 | `list-records <project> [--where JSON] [--limit N] [--offset N]` | Query records |
@@ -56,6 +60,23 @@ crow add-record "My Tasks" '{"Name":"Buy milk","Status":"Todo","Due":"2026-08-10
 crow list-records "My Tasks" --where '{"Status":"Todo"}' --limit 20
 crow update-record "My Tasks" 3f2a '{"Status":"Done"}'
 ```
+
+## Tables
+
+A project holds one or more tables, each with its own fields, records and
+views. Every field/record command takes `--table <name or id>`; it can be
+omitted when the project has a single table, and is **required** once it has
+several — rather than guess, the CLI refuses and lists the tables, so a script
+can't silently write into the wrong one.
+
+```bash
+crow create-table "My Tasks" People --fields '[{"name":"Name","type":"text"}]'
+crow add-record "My Tasks" '{"Name":"Ada"}' --table People
+crow list-records "My Tasks" --table People
+```
+
+Projects saved before multi-table support are read as a single table named
+after the project; the file itself is upgraded the next time it's written.
 
 ## Data location
 

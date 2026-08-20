@@ -11,7 +11,7 @@ import {
   type DragStartEvent
 } from '@dnd-kit/core'
 import { CircleChevronDown, Plus, SquareKanban } from 'lucide-react'
-import type { Field, Project, RecordRow, View } from '@shared/types'
+import type { Field, Table, RecordRow, View } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { ChoiceBadge } from '@/components/ChoiceBadge'
@@ -22,24 +22,24 @@ import { GroupSelect } from '@/components/toolbar/GroupSelect'
 import { groupRecords, UNCATEGORIZED, type RecordGroup } from '@/lib/derive'
 import { displayValue, isEmptyValue } from '@/lib/fields'
 import * as ops from '@/lib/ops'
-import type { ProjectUpdater } from '@/lib/queries'
+import type { TableUpdater } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 
 type KanbanViewType = Extract<View, { type: 'kanban' }>
 
 export function KanbanView({
-  project,
+  table,
   view,
   update,
   onOpenRecord
 }: {
-  project: Project
+  table: Table
   view: KanbanViewType
-  update: ProjectUpdater
+  update: TableUpdater
   onOpenRecord: (recordId: string) => void
 }): React.JSX.Element {
   const config = view.config
-  const selectFields = project.fields.filter((f) => f.type === 'select')
+  const selectFields = table.fields.filter((f) => f.type === 'select')
   const groupField = selectFields.find((f) => f.id === config.groupByFieldId)
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null)
   const [addFieldOpen, setAddFieldOpen] = useState(false)
@@ -56,7 +56,7 @@ export function KanbanView({
     )
   }
 
-  const cardFields = project.fields.filter(
+  const cardFields = table.fields.filter(
     (f) => !config.hiddenFieldIds.includes(f.id) && f.id !== groupField?.id
   )
 
@@ -77,7 +77,7 @@ export function KanbanView({
     return (
       <div className="flex h-full flex-col">
         <Toolbar
-          project={project}
+          table={table}
           config={config}
           selectFields={selectFields}
           patchConfig={patchConfig}
@@ -126,13 +126,13 @@ export function KanbanView({
     )
   }
 
-  const groups = groupRecords(project.records, groupField)
-  const activeRecord = project.records.find((r) => r.id === activeRecordId)
+  const groups = groupRecords(table.records, groupField)
+  const activeRecord = table.records.find((r) => r.id === activeRecordId)
 
   return (
     <div className="flex h-full flex-col">
       <Toolbar
-        project={project}
+        table={table}
         config={config}
         selectFields={selectFields}
         patchConfig={patchConfig}
@@ -145,7 +145,7 @@ export function KanbanView({
                 key={group.key}
                 group={group}
                 cardFields={cardFields}
-                titleField={project.fields[0]}
+                titleField={table.fields[0]}
                 onOpenRecord={onOpenRecord}
                 onAddCard={() =>
                   update((p) =>
@@ -165,7 +165,7 @@ export function KanbanView({
             <KanbanCard
               record={activeRecord}
               cardFields={cardFields}
-              titleField={project.fields[0]}
+              titleField={table.fields[0]}
               className="rotate-2 shadow-lg"
             />
           )}
@@ -176,12 +176,12 @@ export function KanbanView({
 }
 
 function Toolbar({
-  project,
+  table,
   config,
   selectFields,
   patchConfig
 }: {
-  project: Project
+  table: Table
   config: KanbanViewType['config']
   selectFields: Field[]
   patchConfig: (patch: Partial<KanbanViewType['config']>) => void
@@ -196,10 +196,10 @@ function Toolbar({
         noneLabel="No grouping"
       />
       <FieldsPopover
-        fields={project.fields}
+        fields={table.fields}
         hiddenFieldIds={config.hiddenFieldIds}
         onChange={(hiddenFieldIds) => patchConfig({ hiddenFieldIds })}
-        lockedFieldId={project.fields[0]?.id}
+        lockedFieldId={table.fields[0]?.id}
       />
     </div>
   )

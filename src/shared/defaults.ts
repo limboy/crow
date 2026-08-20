@@ -1,4 +1,11 @@
-import { CREATED_AT_DATE_SOURCE, type Field, type Project, type RecordRow, type View } from './types'
+import {
+  CREATED_AT_DATE_SOURCE,
+  type Field,
+  type Project,
+  type RecordRow,
+  type Table,
+  type View
+} from './types'
 
 const uuid = (): string => crypto.randomUUID()
 const now = (): string => new Date().toISOString()
@@ -32,7 +39,8 @@ export function newView(type: View['type'], name?: string): View {
   }
 }
 
-export function newProject(name: string): Project {
+/** A fresh table with the starter schema every new project/table gets. */
+export function newTable(name: string): Table {
   const nameField: Field = { id: uuid(), name: 'Name', type: 'text' }
   const statusField: Field = {
     id: uuid(),
@@ -54,10 +62,18 @@ export function newProject(name: string): Project {
   return {
     id: uuid(),
     name,
-    createdAt: now(),
-    updatedAt: now(),
     fields: [nameField, statusField, notesField],
     records: [newRecord(), newRecord(), newRecord()],
     views: [newView('table'), kanban, newView('gallery')]
+  }
+}
+
+export function newProject(name: string): Project {
+  return {
+    id: uuid(),
+    name,
+    createdAt: now(),
+    updatedAt: now(),
+    tables: [newTable('Table')]
   }
 }

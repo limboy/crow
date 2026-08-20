@@ -1,115 +1,168 @@
-import { newRecord, newView } from '@shared/defaults'
+import { newRecord, newTable, newView } from '@shared/defaults'
 import {
   CREATED_AT_DATE_SOURCE,
   type Field,
   type Project,
   type RecordRow,
+  type Table,
   type View,
   type ViewType
 } from '@shared/types'
 
-/** Pure Project -> Project transforms, applied through useUpdateProject. */
+/**
+ * Pure transforms of the two things the app edits: a single Table (its
+ * records, fields and views), applied through useUpdateTable, and the Project
+ * itself (its list of tables), applied through useUpdateProject.
+ */
 
-export function patchView(project: Project, viewId: string, fn: (view: View) => View): Project {
-  return { ...project, views: project.views.map((v) => (v.id === viewId ? fn(v) : v)) }
+// --- Tables -----------------------------------------------------------------
+
+export function patchTable(project: Project, tableId: string, fn: (table: Table) => Table): Project {
+  return { ...project, tables: project.tables.map((t) => (t.id === tableId ? fn(t) : t)) }
 }
 
-export function addView(project: Project, type: ViewType): Project {
-  const count = project.views.filter((v) => v.type === type).length
+/** Appends a table with a name that doesn't collide with the existing ones. */
+export function addTable(project: Project, name?: string): Project {
+  return { ...project, tables: [...project.tables, newTable(name ?? nextTableName(project))] }
+}
+
+function nextTableName(project: Project): string {
+  const taken = new Set(project.tables.map((t) => t.name))
+  for (let n = project.tables.length + 1; ; n++) {
+    const name = `Table ${n}`
+    if (!taken.has(name)) return name
+  }
+}
+
+export function renameTable(project: Project, tableId: string, name: string): Project {
+  return patchTable(project, tableId, (t) => ({ ...t, name }))
+}
+
+/** Deep-copies a table so edits to the copy can't reach back into the
+ *  original. Field/record/view ids are kept: they're only ever resolved
+ *  within their own table, so a copy that reuses them stays self-consistent. */
+export function duplicateTable(project: Project, tableId: string): Project {
+  const index = project.tables.findIndex((t) => t.id === tableId)
+  if (index === -1) return project
+  const source = project.tables[index]
+  const clone: Table = {
+    ...structuredClone(source),
+    id: crypto.randomUUID(),
+    name: `${source.name} copy`
+  }
+  const tables = [...project.tables]
+  tables.splice(index + 1, 0, clone)
+  return { ...project, tables }
+}
+
+/** A project always keeps at least one table, mirroring how views work. */
+export function deleteTable(project: Project, tableId: string): Project {
+  if (project.tables.length <= 1) return project
+  return { ...project, tables: project.tables.filter((t) => t.id !== tableId) }
+}
+
+// --- Views, records and fields, within one table ----------------------------
+
+export function patchView(table: Table, viewId: string, fn: (view: View) => View): Table {
+  return { ...table, views: table.views.map((v) => (v.id === viewId ? fn(v) : v)) }
+}
+
+export function addView(table: Table, type: ViewType): Table {
+  const count = table.views.filter((v) => v.type === type).length
   const view = newView(type)
   if (view.type === 'calendar') {
     view.config.dateFieldId =
-      project.fields.find((field) => field.type === 'date')?.id ?? CREATED_AT_DATE_SOURCE
+      table.fields.find((field) => field.type === 'date')?.id ?? CREATED_AT_DATE_SOURCE
   }
   if (count > 0) view.name = `${view.name} ${count + 1}`
-  return { ...project, views: [...project.views, view] }
+  return { ...table, views: [...table.views, view] }
 }
 
-export function renameView(project: Project, viewId: string, name: string): Project {
-  return patchView(project, viewId, (v) => ({ ...v, name }))
+export function renameView(table: Table, viewId: string, name: string): Table {
+  return patchView(table, viewId, (v) => ({ ...v, name }))
 }
 
-export function deleteView(project: Project, viewId: string): Project {
-  if (project.views.length <= 1) return project
-  return { ...project, views: project.views.filter((v) => v.id !== viewId) }
+export function deleteView(table: Table, viewId: string): Table {
+  if (table.views.length <= 1) return table
+  return { ...table, views: table.views.filter((v) => v.id !== viewId) }
 }
 
-export function addRecord(project: Project, values: Record<string, unknown> = {}): Project {
-  return { ...project, records: [...project.records, newRecord(values)] }
+export function addRecord(table: Table, values: Record<string, unknown> = {}): Table {
+  return { ...table, records: [...table.records, newRecord(values)] }
 }
 
-export function insertRecordAbove(project: Project, recordId: string): Project {
-  const index = project.records.findIndex((r) => r.id === recordId)
-  const records = [...project.records]
+export function insertRecordAbove(table: Table, recordId: string): Table {
+  const index = table.records.findIndex((r) => r.id === recordId)
+  const records = [...table.records]
   records.splice(index === -1 ? records.length : index, 0, newRecord())
-  return { ...project, records }
+  return { ...table, records }
 }
 
-export function insertRecordBelow(project: Project, recordId: string): Project {
-  const index = project.records.findIndex((r) => r.id === recordId)
-  const records = [...project.records]
+export function insertRecordBelow(table: Table, recordId: string): Table {
+  const index = table.records.findIndex((r) => r.id === recordId)
+  const records = [...table.records]
   records.splice(index === -1 ? records.length : index + 1, 0, newRecord())
-  return { ...project, records }
+  return { ...table, records }
 }
 
-export function duplicateRecord(project: Project, recordId: string): Project {
-  const index = project.records.findIndex((r) => r.id === recordId)
-  if (index === -1) return project
-  const clone = newRecord({ ...project.records[index].values })
-  const records = [...project.records]
+export function duplicateRecord(table: Table, recordId: string): Table {
+  const index = table.records.findIndex((r) => r.id === recordId)
+  if (index === -1) return table
+  const clone = newRecord({ ...table.records[index].values })
+  const records = [...table.records]
   records.splice(index + 1, 0, clone)
-  return { ...project, records }
+  return { ...table, records }
 }
 
 export function setRecordValue(
-  project: Project,
+  table: Table,
   recordId: string,
   fieldId: string,
   value: unknown
-): Project {
+): Table {
   return {
-    ...project,
-    records: project.records.map((r) =>
+    ...table,
+    records: table.records.map((r) =>
       r.id === recordId ? { ...r, values: { ...r.values, [fieldId]: value } } : r
     )
   }
 }
 
-export function deleteRecord(project: Project, recordId: string): Project {
-  return { ...project, records: project.records.filter((r) => r.id !== recordId) }
+export function deleteRecord(table: Table, recordId: string): Table {
+  return { ...table, records: table.records.filter((r) => r.id !== recordId) }
 }
 
-export function deleteRecords(project: Project, recordIds: string[]): Project {
+export function deleteRecords(table: Table, recordIds: string[]): Table {
   const ids = new Set(recordIds)
-  return { ...project, records: project.records.filter((r) => !ids.has(r.id)) }
+  return { ...table, records: table.records.filter((r) => !ids.has(r.id)) }
 }
 
 /** Appends `field` unless `index` is given, in which case it's inserted there. */
-export function addField(project: Project, field: Field, index?: number): Project {
-  const fields = [...project.fields]
+export function addField(table: Table, field: Field, index?: number): Table {
+  const fields = [...table.fields]
   if (index === undefined || index < 0 || index >= fields.length) {
     fields.push(field)
   } else {
     fields.splice(index, 0, field)
   }
-  return { ...project, fields }
+  return { ...table, fields }
 }
 
-export function updateField(project: Project, fieldId: string, patch: Partial<Field>): Project {
+export function updateField(table: Table, fieldId: string, patch: Partial<Field>): Table {
   return {
-    ...project,
-    fields: project.fields.map((f) => (f.id === fieldId ? { ...f, ...patch, id: f.id } : f))
+    ...table,
+    fields: table.fields.map((f) => (f.id === fieldId ? { ...f, ...patch, id: f.id } : f))
   }
 }
 
 /** Removes the field plus every reference to it in records and view configs. */
-export function deleteField(project: Project, fieldId: string): Project {
+export function deleteField(table: Table, fieldId: string): Table {
   const stripValues = (r: RecordRow): RecordRow => {
     if (!(fieldId in r.values)) return r
     const { [fieldId]: _removed, ...rest } = r.values
     return { ...r, values: rest }
   }
-  const views = project.views.map((view): View => {
+  const views = table.views.map((view): View => {
     const hiddenFieldIds = view.config.hiddenFieldIds.filter((id) => id !== fieldId)
     switch (view.type) {
       case 'table':
@@ -155,9 +208,9 @@ export function deleteField(project: Project, fieldId: string): Project {
     }
   })
   return {
-    ...project,
-    fields: project.fields.filter((f) => f.id !== fieldId),
-    records: project.records.map(stripValues),
+    ...table,
+    fields: table.fields.filter((f) => f.id !== fieldId),
+    records: table.records.map(stripValues),
     views
   }
 }

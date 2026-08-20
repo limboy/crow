@@ -1,7 +1,8 @@
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import { newProject } from '@shared/defaults'
-import type { Project, ProjectMeta } from '@shared/types'
+import { migrateProject, projectRecordCount } from '@shared/migrate'
+import type { LegacyProject, Project, ProjectMeta } from '@shared/types'
 import { getDataDir } from './config'
 
 export const SAFE_ID = /^[a-zA-Z0-9-]+$/
@@ -48,12 +49,13 @@ export async function listProjects(): Promise<ProjectMeta[]> {
   for (const id of ids) {
     try {
       const raw = await fs.readFile(projectFile(id), 'utf-8')
-      const p = JSON.parse(raw) as Project
+      const p = migrateProject(JSON.parse(raw) as Project | LegacyProject)
       metas.push({
         id: p.id,
         name: p.name,
         icon: p.icon,
-        recordCount: p.records.length,
+        recordCount: projectRecordCount(p),
+        tableCount: p.tables.length,
         createdAt: p.createdAt,
         updatedAt: p.updatedAt
       })
@@ -64,9 +66,11 @@ export async function listProjects(): Promise<ProjectMeta[]> {
   return metas.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
+/** Projects are migrated on the way out rather than rewritten in place, so an
+ *  older file is only upgraded on disk once the user actually edits it. */
 export async function getProject(id: string): Promise<Project> {
   const raw = await fs.readFile(projectFile(id), 'utf-8')
-  return JSON.parse(raw) as Project
+  return migrateProject(JSON.parse(raw) as Project | LegacyProject)
 }
 
 export async function saveProject(project: Project): Promise<void> {

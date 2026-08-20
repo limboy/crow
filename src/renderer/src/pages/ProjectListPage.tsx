@@ -115,6 +115,7 @@ function ProjectCard({ project }: { project: ProjectMeta }): React.JSX.Element {
       <div className="mt-3">
         <div className="truncate text-sm font-medium">{project.name}</div>
         <div className="mt-0.5 text-xs text-muted-foreground">
+          {project.tableCount > 1 ? `${project.tableCount} tables · ` : ''}
           {project.recordCount} record{project.recordCount === 1 ? '' : 's'} · updated{' '}
           {timeAgo(project.updatedAt)}
         </div>

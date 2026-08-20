@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Project } from '@shared/types'
+import type { Project, Table } from '@shared/types'
+import { patchTable } from '@/lib/ops'
 
 export function useProjects() {
   return useQuery({ queryKey: ['projects'], queryFn: () => window.api.listProjects() })
@@ -51,6 +52,21 @@ export function useUpdateProject(id: string): ProjectUpdater {
       )
     },
     [id, queryClient]
+  )
+}
+
+export type TableUpdater = (updater: (table: Table) => Table) => void
+
+/**
+ * The updater every view and record editor works through: they only ever
+ * touch one table, so they don't have to know they live inside a project.
+ * Saving is still whole-project, via useUpdateProject.
+ */
+export function useUpdateTable(projectId: string, tableId: string): TableUpdater {
+  const update = useUpdateProject(projectId)
+  return useCallback(
+    (updater: (table: Table) => Table) => update((p) => patchTable(p, tableId, updater)),
+    [update, tableId]
   )
 }
 

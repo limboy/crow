@@ -118,9 +118,15 @@ export async function seedIfEmpty(): Promise<void> {
     name: 'Product Roadmap',
     createdAt: now(),
     updatedAt: now(),
-    fields: [name, status, priority, tags, due, approved, spec, cover],
-    records: rows.map((values) => newRecord(values)),
-    views: [newView('table', 'All items'), kanban, gallery]
+    tables: [
+      {
+        id: uuid(),
+        name: 'Roadmap',
+        fields: [name, status, priority, tags, due, approved, spec, cover],
+        records: rows.map((values) => newRecord(values)),
+        views: [newView('table', 'All items'), kanban, gallery]
+      }
+    ]
   }
 
   await saveProject(project)

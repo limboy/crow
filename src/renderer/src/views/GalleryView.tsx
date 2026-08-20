@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Image as ImageIcon, Plus } from 'lucide-react'
-import type { Field, Project, RecordRow, View } from '@shared/types'
+import type { Field, Table, RecordRow, View } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { FieldDialog } from '@/components/FieldDialog'
 import { ValueDisplay } from '@/components/ValueDisplay'
@@ -8,24 +8,24 @@ import { FieldsPopover } from '@/components/toolbar/FieldsPopover'
 import { GroupSelect } from '@/components/toolbar/GroupSelect'
 import { displayValue, isEmptyValue } from '@/lib/fields'
 import * as ops from '@/lib/ops'
-import type { ProjectUpdater } from '@/lib/queries'
+import type { TableUpdater } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 
 type GalleryViewType = Extract<View, { type: 'gallery' }>
 
 export function GalleryView({
-  project,
+  table,
   view,
   update,
   onOpenRecord
 }: {
-  project: Project
+  table: Table
   view: GalleryViewType
-  update: ProjectUpdater
+  update: TableUpdater
   onOpenRecord: (recordId: string) => void
 }): React.JSX.Element {
   const config = view.config
-  const imageFields = project.fields.filter((f) => f.type === 'image')
+  const imageFields = table.fields.filter((f) => f.type === 'image')
   const coverField = imageFields.find((f) => f.id === config.coverFieldId)
   const [addFieldOpen, setAddFieldOpen] = useState(false)
 
@@ -37,7 +37,7 @@ export function GalleryView({
     )
   }
 
-  const cardFields = project.fields.filter(
+  const cardFields = table.fields.filter(
     (f) => !config.hiddenFieldIds.includes(f.id) && f.id !== coverField?.id
   )
 
@@ -65,22 +65,22 @@ export function GalleryView({
           </Button>
         )}
         <FieldsPopover
-          fields={project.fields}
+          fields={table.fields}
           hiddenFieldIds={config.hiddenFieldIds}
           onChange={(hiddenFieldIds) => patchConfig({ hiddenFieldIds })}
-          lockedFieldId={project.fields[0]?.id}
+          lockedFieldId={table.fields[0]?.id}
         />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4">
-          {project.records.map((record) => (
+          {table.records.map((record) => (
             <GalleryCard
               key={record.id}
               record={record}
               coverField={coverField}
               cardFields={cardFields}
-              titleField={project.fields[0]}
+              titleField={table.fields[0]}
               onClick={() => onOpenRecord(record.id)}
             />
           ))}

@@ -184,7 +184,9 @@ function ProjectMenuItem({
     const confirmed = await window.api.showConfirmDialog({
       title: `Delete "${project.name}"?`,
       message: `Delete "${project.name}"?`,
-      detail: `This permanently deletes the project and all of its ${project.recordCount} records.`,
+      detail: `This permanently deletes the project, its ${project.tableCount} table${
+        project.tableCount === 1 ? '' : 's'
+      }, and all ${project.recordCount} of their records.`,
       confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
       destructive: true

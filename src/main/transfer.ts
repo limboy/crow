@@ -2,13 +2,16 @@ import { dialog, type BrowserWindow } from 'electron'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import type { Project, ProjectBundle, ProjectBundleAsset } from '@shared/types'
+import { migrateProject } from '@shared/migrate'
+import type { LegacyProject, Project, ProjectBundle, ProjectBundleAsset } from '@shared/types'
 import { getProject, saveProject } from './storage'
 import { imagesDir } from './images'
 import { audioDir } from './audio'
 
 const FORMAT = 'crow-project'
-const VERSION = 1
+/** 1 = single implicit table (`fields`/`records`/`views` on the project),
+ *  2 = `tables`. Version 1 files still import; they're migrated on the way in. */
+const VERSION = 2
 
 /** Extension of an exported bundle. It's plain JSON, so it stays as readable
  *  and agent-editable as the on-disk project files. */
@@ -85,17 +88,18 @@ function parseBundle(raw: string): ProjectBundle {
   if ((bundle.version ?? 0) > VERSION) {
     throw new Error('That export was made by a newer version of Crow.')
   }
-  const project = bundle.project
-  if (
-    !project ||
-    typeof project.name !== 'string' ||
-    !Array.isArray(project.fields) ||
-    !Array.isArray(project.records) ||
-    !Array.isArray(project.views)
-  ) {
+  const project = bundle.project as (Project & Partial<LegacyProject>) | undefined
+  const hasTables = Array.isArray(project?.tables)
+  const hasLegacyTable =
+    Array.isArray(project?.fields) && Array.isArray(project?.records) && Array.isArray(project?.views)
+  if (!project || typeof project.name !== 'string' || (!hasTables && !hasLegacyTable)) {
     throw new Error('That export has no readable project in it.')
   }
-  return { ...(bundle as ProjectBundle), project, assets: bundle.assets ?? [] }
+  return {
+    ...(bundle as ProjectBundle),
+    project: migrateProject(project),
+    assets: bundle.assets ?? []
+  }
 }
 
 /**

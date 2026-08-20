@@ -18,8 +18,8 @@ import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import {
   CREATED_AT_DATE_SOURCE,
   type Field,
-  type Project,
   type RecordRow,
+  type Table,
   type View
 } from '@shared/types'
 import { Button } from '@/components/ui/button'
@@ -36,7 +36,7 @@ import { FieldDialog } from '@/components/FieldDialog'
 import { GroupSelect } from '@/components/toolbar/GroupSelect'
 import { displayValue } from '@/lib/fields'
 import * as ops from '@/lib/ops'
-import type { ProjectUpdater } from '@/lib/queries'
+import type { TableUpdater } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 
 type CalendarViewType = Extract<View, { type: 'calendar' }>
@@ -51,19 +51,19 @@ const CREATED_DATE_SOURCE: Field = {
 }
 
 export function CalendarView({
-  project,
+  table,
   view,
   update,
   onOpenRecord
 }: {
-  project: Project
+  table: Table
   view: CalendarViewType
-  update: ProjectUpdater
+  update: TableUpdater
   onOpenRecord: (recordId: string) => void
 }): React.JSX.Element {
   const [anchorDate, setAnchorDate] = useState(() => new Date())
   const [addFieldOpen, setAddFieldOpen] = useState(false)
-  const dateFields = project.fields.filter((field) => field.type === 'date')
+  const dateFields = table.fields.filter((field) => field.type === 'date')
   const dateSources = [CREATED_DATE_SOURCE, ...dateFields]
   const dateSource =
     dateSources.find((field) => field.id === view.config.dateFieldId) ?? CREATED_DATE_SOURCE
@@ -164,7 +164,7 @@ export function CalendarView({
       <CalendarGrid
         anchorDate={anchorDate}
         mode={mode}
-        project={project}
+        table={table}
         dateSourceId={dateSource.id}
         onOpenRecord={onOpenRecord}
         onAddRecord={canAddOnDay ? addRecordOn : undefined}
@@ -194,19 +194,19 @@ export function CalendarView({
 function CalendarGrid({
   anchorDate,
   mode,
-  project,
+  table,
   dateSourceId,
   onOpenRecord,
   onAddRecord
 }: {
   anchorDate: Date
   mode: CalendarMode
-  project: Project
+  table: Table
   dateSourceId: string
   onOpenRecord: (recordId: string) => void
   onAddRecord?: (day: Date) => void
 }): React.JSX.Element {
-  const titleField = project.fields[0]
+  const titleField = table.fields[0]
   const month = startOfMonth(anchorDate)
   const range =
     mode === 'month'
@@ -224,7 +224,7 @@ function CalendarGrid({
   const visibleEventCapacity = useVisibleEventCapacity(gridRef, rowCount)
   const recordsByDay = new Map<string, RecordRow[]>()
 
-  for (const record of project.records) {
+  for (const record of table.records) {
     const createdDate = new Date(record.createdAt)
     const value =
       dateSourceId === CREATED_AT_DATE_SOURCE && isValid(createdDate)

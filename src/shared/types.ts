@@ -103,7 +103,29 @@ export type View =
   | { id: string; name: string; type: 'gallery'; config: GalleryViewConfig }
   | { id: string; name: string; type: 'calendar'; config: CalendarViewConfig }
 
+/** One table inside a project: its own schema, rows, and saved views.
+ *  Tables are independent — a field id only means something within its own
+ *  table, and nothing is shared across them but the project's media folder. */
+export interface Table {
+  id: string
+  name: string
+  fields: Field[]
+  records: RecordRow[]
+  views: View[]
+}
+
 export interface Project {
+  id: string
+  name: string
+  icon?: string
+  createdAt: string
+  updatedAt: string
+  tables: Table[]
+}
+
+/** Shape of a project saved before multi-table support, still readable from
+ *  disk and from `.crow` files (see `migrateProject`). */
+export interface LegacyProject {
   id: string
   name: string
   icon?: string
@@ -136,7 +158,9 @@ export interface ProjectMeta {
   id: string
   name: string
   icon?: string
+  /** Records across every table in the project. */
   recordCount: number
+  tableCount: number
   createdAt: string
   updatedAt: string
 }

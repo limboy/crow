@@ -2,13 +2,14 @@
 
 ![](screenshot.webp)
 
-A lite Airtable-style desktop app built with Electron. Create multiple projects, each with its own fields, records, and views.
+A lite Airtable-style desktop app built with Electron. Create multiple projects, each holding one or more tables with their own fields, records, and views.
 
 - **Table view** — show/hide fields, filter rules, multi-sort, group by field, inline cell editing
 - **Kanban view** — group by any single-select field, drag cards between columns
 - **Gallery view** — pick any image field as the card cover
 - **Field types** — text, number, single select, multi select, date, checkbox, URL, image (local file or URL)
-- **Import / export** — move a whole project (schema, records, views, and its images/audio) between machines as a single `.crow` file
+- **Multiple tables** — switch between a project's tables from the header; each keeps its own schema and views
+- **Import / export** — move a whole project (its tables, records, views, and images/audio) between machines as a single `.crow` file
 
 ## Download
 

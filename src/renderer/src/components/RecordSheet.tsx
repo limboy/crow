@@ -1,5 +1,5 @@
 import { Trash2 } from 'lucide-react'
-import type { Project } from '@shared/types'
+import type { Table } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
@@ -7,21 +7,23 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { ValueEditor } from '@/components/editors/ValueEditor'
 import { displayValue, fieldTypeInfo } from '@/lib/fields'
 import * as ops from '@/lib/ops'
-import type { ProjectUpdater } from '@/lib/queries'
+import type { TableUpdater } from '@/lib/queries'
 
 export function RecordSheet({
-  project,
+  projectId,
+  table,
   recordId,
   onClose,
   update
 }: {
-  project: Project
+  projectId: string
+  table: Table
   recordId: string | null
   onClose: () => void
-  update: ProjectUpdater
+  update: TableUpdater
 }): React.JSX.Element {
-  const record = project.records.find((r) => r.id === recordId)
-  const titleField = project.fields[0]
+  const record = table.records.find((r) => r.id === recordId)
+  const titleField = table.fields[0]
   const title =
     record && titleField ? displayValue(titleField, record.values[titleField.id]) : ''
 
@@ -35,7 +37,7 @@ export function RecordSheet({
           <>
             <ScrollArea className="min-h-0 flex-1">
               <div className="flex flex-col gap-4 px-4 pt-2 pb-4">
-                {project.fields.map((field) => {
+                {table.fields.map((field) => {
                   const info = fieldTypeInfo(field.type)
                   return (
                     <div key={field.id} className="flex flex-col gap-1.5">
@@ -44,7 +46,7 @@ export function RecordSheet({
                         {field.name}
                       </div>
                       <ValueEditor
-                        projectId={project.id}
+                        projectId={projectId}
                         field={field}
                         value={record.values[field.id]}
                         onChange={(value) =>
