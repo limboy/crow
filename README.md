@@ -44,6 +44,10 @@ above the project list offers **Import project…**, which reads a `.crow` file
 back in as a new project with a fresh id: importing the same file twice gives
 you two independent copies rather than overwriting anything.
 
+A `.crow` file is plain JSON, so scripts and agents can generate one directly —
+[docs/crow-format.md](docs/crow-format.md) documents the whole format, with a
+minimal importable example and a Node generator.
+
 ## Data
 
 Projects are stored as JSON files in Electron's `userData` directory (`~/Library/Application Support/crow/projects/` on macOS). Locally picked images are copied to `userData/images/` and served through a custom `app-image://` protocol. A demo project is seeded on first launch.
