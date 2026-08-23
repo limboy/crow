@@ -93,20 +93,29 @@ export interface TableViewConfig {
   columnWidths?: Record<string, number>
 }
 
+/** Aspect ratio (width:height) for a card's featured image, in Kanban,
+ *  Gallery and Calendar views. */
+export type ImageAspectRatio = '3:5' | '1:1' | '5:3'
+
 export interface KanbanViewConfig {
   groupByFieldId?: string
   hiddenFieldIds: string[]
+  imageFieldId?: string
+  imageAspectRatio?: ImageAspectRatio
 }
 
 export interface GalleryViewConfig {
   coverFieldId?: string
   hiddenFieldIds: string[]
+  imageAspectRatio?: ImageAspectRatio
 }
 
 export interface CalendarViewConfig {
   dateFieldId?: string
   hiddenFieldIds: string[]
   mode?: 'month' | 'week'
+  imageFieldId?: string
+  imageAspectRatio?: ImageAspectRatio
 }
 
 export type View =

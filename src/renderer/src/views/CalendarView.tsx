@@ -14,10 +14,11 @@ import {
   subMonths,
   subWeeks
 } from 'date-fns'
-import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Image as ImageIcon, Plus } from 'lucide-react'
 import {
   CREATED_AT_DATE_SOURCE,
   type Field,
+  type ImageAspectRatio,
   type RecordRow,
   type Table,
   type View
@@ -36,7 +37,9 @@ import { FieldDialog } from '@/components/FieldDialog'
 import { ValueDisplay } from '@/components/ValueDisplay'
 import { FieldsPopover } from '@/components/toolbar/FieldsPopover'
 import { GroupSelect } from '@/components/toolbar/GroupSelect'
+import { ImageFieldSelect } from '@/components/toolbar/ImageFieldSelect'
 import { displayValue, isEmptyValue } from '@/lib/fields'
+import { imageAspectRatioInfo } from '@/lib/imageAspect'
 import { useProjectTables } from '@/lib/relations'
 import * as ops from '@/lib/ops'
 import type { TableUpdater } from '@/lib/queries'
@@ -73,8 +76,13 @@ export function CalendarView({
     dateSources.find((field) => field.id === config.dateFieldId) ?? CREATED_DATE_SOURCE
   const canAddOnDay = dateSource.id !== CREATED_AT_DATE_SOURCE
   const mode = config.mode ?? 'month'
+  const imageFields = table.fields.filter((field) => field.type === 'image')
+  const imageField = imageFields.find((field) => field.id === config.imageFieldId)
   const cardFields = table.fields.filter(
-    (field) => !config.hiddenFieldIds.includes(field.id) && field.id !== dateSource.id
+    (field) =>
+      !config.hiddenFieldIds.includes(field.id) &&
+      field.id !== dateSource.id &&
+      field.id !== imageField?.id
   )
 
   const patchConfig = (patch: Partial<CalendarViewType['config']>): void => {
@@ -125,6 +133,15 @@ export function CalendarView({
             <Plus data-icon="inline-start" />
             Add date field
           </Button>
+        )}
+        {mode === 'week' && imageFields.length > 0 && (
+          <ImageFieldSelect
+            fields={imageFields}
+            value={config.imageFieldId}
+            aspectRatio={config.imageAspectRatio}
+            onFieldChange={(imageFieldId) => patchConfig({ imageFieldId })}
+            onAspectRatioChange={(imageAspectRatio) => patchConfig({ imageAspectRatio })}
+          />
         )}
         {mode === 'week' && (
           <FieldsPopover
@@ -182,6 +199,8 @@ export function CalendarView({
         table={table}
         dateSourceId={dateSource.id}
         cardFields={cardFields}
+        imageField={imageField}
+        aspectRatio={config.imageAspectRatio}
         onOpenRecord={onOpenRecord}
         onAddRecord={canAddOnDay ? addRecordOn : undefined}
       />
@@ -213,6 +232,8 @@ function CalendarGrid({
   table,
   dateSourceId,
   cardFields,
+  imageField,
+  aspectRatio,
   onOpenRecord,
   onAddRecord
 }: {
@@ -221,6 +242,8 @@ function CalendarGrid({
   table: Table
   dateSourceId: string
   cardFields: Field[]
+  imageField?: Field
+  aspectRatio?: ImageAspectRatio
   onOpenRecord: (recordId: string) => void
   onAddRecord?: (day: Date) => void
 }): React.JSX.Element {
@@ -323,6 +346,8 @@ function CalendarGrid({
                     record={record}
                     titleField={titleField}
                     cardFields={mode === 'week' ? cardFields : undefined}
+                    imageField={mode === 'week' ? imageField : undefined}
+                    aspectRatio={aspectRatio}
                     onOpenRecord={onOpenRecord}
                   />
                 ))}
@@ -348,11 +373,15 @@ function CalendarEventButton({
   record,
   titleField,
   cardFields,
+  imageField,
+  aspectRatio,
   onOpenRecord
 }: {
   record: RecordRow
   titleField?: Field
   cardFields?: Field[]
+  imageField?: Field
+  aspectRatio?: ImageAspectRatio
   onOpenRecord: (recordId: string) => void
 }): React.JSX.Element {
   const tables = useProjectTables()
@@ -360,13 +389,15 @@ function CalendarEventButton({
   const detailFields = cardFields?.filter(
     (field) => field.id !== titleField?.id && !isEmptyValue(field, record.values[field.id])
   )
+  const imageValue = imageField ? record.values[imageField.id] : undefined
+  const hasImage = imageField !== undefined && !isEmptyValue(imageField, imageValue)
 
   if (cardFields) {
     return (
       <div
         role="button"
         tabIndex={0}
-        className="shrink-0 rounded-md border bg-card p-2 text-left shadow-xs outline-none transition-shadow hover:shadow-sm focus-visible:ring-2 focus-visible:ring-ring"
+        className="shrink-0 overflow-hidden rounded-md border bg-card text-left shadow-xs outline-none transition-shadow hover:shadow-sm focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => onOpenRecord(record.id)}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return
@@ -375,20 +406,29 @@ function CalendarEventButton({
           onOpenRecord(record.id)
         }}
       >
-        <div className={cn('truncate text-[13px] font-medium', !title && 'text-muted-foreground')}>
-          {title || 'Untitled'}
-        </div>
-        {detailFields && detailFields.length > 0 && (
-          <div className="mt-1.5 flex flex-col gap-1.5">
-            {detailFields.map((field) =>
-              field.type === 'image' ? (
-                <img
-                  key={field.id}
-                  src={String(record.values[field.id])}
-                  alt=""
-                  className="h-28 w-full rounded-sm border object-cover"
-                />
-              ) : (
+        {imageField && (
+          <div
+            className={cn(
+              'flex items-center justify-center border-b bg-muted/60',
+              imageAspectRatioInfo(aspectRatio).className
+            )}
+          >
+            {hasImage ? (
+              <img src={String(imageValue)} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <ImageIcon className="size-5 text-muted-foreground/40" />
+            )}
+          </div>
+        )}
+        <div className="p-2">
+          <div
+            className={cn('truncate text-[13px] font-medium', !title && 'text-muted-foreground')}
+          >
+            {title || 'Untitled'}
+          </div>
+          {detailFields && detailFields.length > 0 && (
+            <div className="mt-1.5 flex flex-col gap-1.5">
+              {detailFields.map((field) => (
                 <div key={field.id} className="flex min-w-0 text-xs text-muted-foreground">
                   <ValueDisplay
                     field={field}
@@ -396,10 +436,10 @@ function CalendarEventButton({
                     className="max-w-full"
                   />
                 </div>
-              )
-            )}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     )
   }

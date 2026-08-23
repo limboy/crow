@@ -10,8 +10,8 @@ import {
   type DragEndEvent,
   type DragStartEvent
 } from '@dnd-kit/core'
-import { CircleChevronDown, Plus, SquareKanban } from 'lucide-react'
-import type { Field, Table, RecordRow, View } from '@shared/types'
+import { CircleChevronDown, Image as ImageIcon, Plus, SquareKanban } from 'lucide-react'
+import type { Field, ImageAspectRatio, Table, RecordRow, View } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { ChoiceBadge } from '@/components/ChoiceBadge'
@@ -19,8 +19,10 @@ import { ValueDisplay } from '@/components/ValueDisplay'
 import { FieldDialog } from '@/components/FieldDialog'
 import { FieldsPopover } from '@/components/toolbar/FieldsPopover'
 import { GroupSelect } from '@/components/toolbar/GroupSelect'
+import { ImageFieldSelect } from '@/components/toolbar/ImageFieldSelect'
 import { groupRecords, UNCATEGORIZED, type RecordGroup } from '@/lib/derive'
 import { displayValue, isEmptyValue } from '@/lib/fields'
+import { imageAspectRatioInfo } from '@/lib/imageAspect'
 import * as ops from '@/lib/ops'
 import { useProjectTables } from '@/lib/relations'
 import type { TableUpdater } from '@/lib/queries'
@@ -42,6 +44,8 @@ export function KanbanView({
   const config = view.config
   const selectFields = table.fields.filter((f) => f.type === 'select')
   const groupField = selectFields.find((f) => f.id === config.groupByFieldId)
+  const imageFields = table.fields.filter((f) => f.type === 'image')
+  const imageField = imageFields.find((f) => f.id === config.imageFieldId)
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null)
   const [addFieldOpen, setAddFieldOpen] = useState(false)
 
@@ -58,7 +62,8 @@ export function KanbanView({
   }
 
   const cardFields = table.fields.filter(
-    (f) => !config.hiddenFieldIds.includes(f.id) && f.id !== groupField?.id
+    (f) =>
+      !config.hiddenFieldIds.includes(f.id) && f.id !== groupField?.id && f.id !== imageField?.id
   )
 
   const handleDragStart = (event: DragStartEvent): void => {
@@ -81,6 +86,7 @@ export function KanbanView({
           table={table}
           config={config}
           selectFields={selectFields}
+          imageFields={imageFields}
           patchConfig={patchConfig}
         />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
@@ -136,6 +142,7 @@ export function KanbanView({
         table={table}
         config={config}
         selectFields={selectFields}
+        imageFields={imageFields}
         patchConfig={patchConfig}
       />
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -147,6 +154,8 @@ export function KanbanView({
                 group={group}
                 cardFields={cardFields}
                 titleField={table.fields[0]}
+                imageField={imageField}
+                aspectRatio={config.imageAspectRatio}
                 onOpenRecord={onOpenRecord}
                 onAddCard={() =>
                   update((p) =>
@@ -167,6 +176,8 @@ export function KanbanView({
               record={activeRecord}
               cardFields={cardFields}
               titleField={table.fields[0]}
+              imageField={imageField}
+              aspectRatio={config.imageAspectRatio}
               className="rotate-2 shadow-lg"
             />
           )}
@@ -180,11 +191,13 @@ function Toolbar({
   table,
   config,
   selectFields,
+  imageFields,
   patchConfig
 }: {
   table: Table
   config: KanbanViewType['config']
   selectFields: Field[]
+  imageFields: Field[]
   patchConfig: (patch: Partial<KanbanViewType['config']>) => void
 }): React.JSX.Element {
   return (
@@ -196,6 +209,15 @@ function Toolbar({
         label="Group"
         noneLabel="No grouping"
       />
+      {imageFields.length > 0 && (
+        <ImageFieldSelect
+          fields={imageFields}
+          value={config.imageFieldId}
+          aspectRatio={config.imageAspectRatio}
+          onFieldChange={(imageFieldId) => patchConfig({ imageFieldId })}
+          onAspectRatioChange={(imageAspectRatio) => patchConfig({ imageAspectRatio })}
+        />
+      )}
       <FieldsPopover
         fields={table.fields}
         hiddenFieldIds={config.hiddenFieldIds}
@@ -210,12 +232,16 @@ function KanbanColumn({
   group,
   cardFields,
   titleField,
+  imageField,
+  aspectRatio,
   onOpenRecord,
   onAddCard
 }: {
   group: RecordGroup
   cardFields: Field[]
   titleField?: Field
+  imageField?: Field
+  aspectRatio?: ImageAspectRatio
   onOpenRecord: (recordId: string) => void
   onAddCard: () => void
 }): React.JSX.Element {
@@ -244,6 +270,8 @@ function KanbanColumn({
             record={record}
             cardFields={cardFields}
             titleField={titleField}
+            imageField={imageField}
+            aspectRatio={aspectRatio}
             onOpen={() => onOpenRecord(record.id)}
           />
         ))}
@@ -263,11 +291,15 @@ function DraggableCard({
   record,
   cardFields,
   titleField,
+  imageField,
+  aspectRatio,
   onOpen
 }: {
   record: RecordRow
   cardFields: Field[]
   titleField?: Field
+  imageField?: Field
+  aspectRatio?: ImageAspectRatio
   onOpen: () => void
 }): React.JSX.Element {
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({ id: record.id })
@@ -278,6 +310,8 @@ function DraggableCard({
         record={record}
         cardFields={cardFields}
         titleField={titleField}
+        imageField={imageField}
+        aspectRatio={aspectRatio}
         onClick={onOpen}
       />
     </div>
@@ -288,12 +322,16 @@ function KanbanCard({
   record,
   cardFields,
   titleField,
+  imageField,
+  aspectRatio,
   onClick,
   className
 }: {
   record: RecordRow
   cardFields: Field[]
   titleField?: Field
+  imageField?: Field
+  aspectRatio?: ImageAspectRatio
   onClick?: () => void
   className?: string
 }): React.JSX.Element {
@@ -302,36 +340,45 @@ function KanbanCard({
   const detailFields = cardFields.filter(
     (f) => f.id !== titleField?.id && !isEmptyValue(f, record.values[f.id])
   )
+  const imageValue = imageField ? record.values[imageField.id] : undefined
+  const hasImage = imageField !== undefined && !isEmptyValue(imageField, imageValue)
 
   return (
     <div
       className={cn(
-        'rounded-md border bg-card p-2.5 shadow-xs transition-shadow hover:shadow-sm',
+        'overflow-hidden rounded-md border bg-card shadow-xs transition-shadow hover:shadow-sm',
         className
       )}
       onClick={onClick}
     >
-      <div className={cn('text-[13px] font-medium', !title && 'text-muted-foreground')}>
-        {title || 'Untitled'}
-      </div>
-      {detailFields.length > 0 && (
-        <div className="mt-1.5 flex flex-col gap-1.5">
-          {detailFields.map((field) =>
-            field.type === 'image' ? (
-              <img
-                key={field.id}
-                src={String(record.values[field.id])}
-                alt=""
-                className="h-28 w-full rounded-sm border object-cover"
-              />
-            ) : (
-              <div key={field.id} className="flex min-w-0 text-xs text-muted-foreground">
-                <ValueDisplay field={field} value={record.values[field.id]} />
-              </div>
-            )
+      {imageField && (
+        <div
+          className={cn(
+            'flex items-center justify-center border-b bg-muted/60',
+            imageAspectRatioInfo(aspectRatio).className
+          )}
+        >
+          {hasImage ? (
+            <img src={String(imageValue)} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <ImageIcon className="size-5 text-muted-foreground/40" />
           )}
         </div>
       )}
+      <div className="p-2.5">
+        <div className={cn('text-[13px] font-medium', !title && 'text-muted-foreground')}>
+          {title || 'Untitled'}
+        </div>
+        {detailFields.length > 0 && (
+          <div className="mt-1.5 flex flex-col gap-1.5">
+            {detailFields.map((field) => (
+              <div key={field.id} className="flex min-w-0 text-xs text-muted-foreground">
+                <ValueDisplay field={field} value={record.values[field.id]} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Image as ImageIcon, Plus } from 'lucide-react'
-import type { Field, Table, RecordRow, View } from '@shared/types'
+import type { Field, ImageAspectRatio, Table, RecordRow, View } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { FieldDialog } from '@/components/FieldDialog'
 import { ValueDisplay } from '@/components/ValueDisplay'
 import { FieldsPopover } from '@/components/toolbar/FieldsPopover'
-import { GroupSelect } from '@/components/toolbar/GroupSelect'
+import { ImageFieldSelect } from '@/components/toolbar/ImageFieldSelect'
 import { displayValue, isEmptyValue } from '@/lib/fields'
+import { imageAspectRatioInfo } from '@/lib/imageAspect'
 import { useProjectTables } from '@/lib/relations'
 import * as ops from '@/lib/ops'
 import type { TableUpdater } from '@/lib/queries'
@@ -46,12 +47,13 @@ export function GalleryView({
     <div className="flex h-full flex-col">
       <div className="flex h-10 shrink-0 items-center gap-1 border-b px-3">
         {imageFields.length > 0 ? (
-          <GroupSelect
+          <ImageFieldSelect
             fields={imageFields}
             value={config.coverFieldId}
-            onChange={(coverFieldId) => patchConfig({ coverFieldId })}
+            aspectRatio={config.imageAspectRatio}
+            onFieldChange={(coverFieldId) => patchConfig({ coverFieldId })}
+            onAspectRatioChange={(imageAspectRatio) => patchConfig({ imageAspectRatio })}
             label="Cover"
-            icon={ImageIcon}
             noneLabel="No cover image"
           />
         ) : (
@@ -80,6 +82,7 @@ export function GalleryView({
               key={record.id}
               record={record}
               coverField={coverField}
+              aspectRatio={config.imageAspectRatio}
               cardFields={cardFields}
               titleField={table.fields[0]}
               onClick={() => onOpenRecord(record.id)}
@@ -119,12 +122,14 @@ export function GalleryView({
 function GalleryCard({
   record,
   coverField,
+  aspectRatio,
   cardFields,
   titleField,
   onClick
 }: {
   record: RecordRow
   coverField?: Field
+  aspectRatio?: ImageAspectRatio
   cardFields: Field[]
   titleField?: Field
   onClick: () => void
@@ -143,7 +148,12 @@ function GalleryCard({
       onClick={onClick}
     >
       {coverField && (
-        <div className="flex h-36 items-center justify-center border-b bg-muted/60">
+        <div
+          className={cn(
+            'flex items-center justify-center border-b bg-muted/60',
+            imageAspectRatioInfo(aspectRatio).className
+          )}
+        >
           {hasCover ? (
             <img src={String(coverValue)} alt="" className="h-full w-full object-cover" />
           ) : (
