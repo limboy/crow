@@ -107,10 +107,10 @@ export default function ProjectPage(): React.JSX.Element {
   }
 
   const records = activeTable?.records ?? []
-  // Only the table view currently supports filters, so that's the only view
-  // whose record count can differ from the table total.
+  // Every view type filters the same way, so the header count only has to
+  // know the active view's rules — not which kind of view it is.
   const displayedRecords =
-    activeView?.type === 'table' && activeTable
+    activeView && activeTable
       ? applyFilters(records, activeView.config.filters, activeTable.fields)
       : records
   const filtered = displayedRecords.length !== records.length

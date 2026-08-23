@@ -1,4 +1,4 @@
-import type { LegacyProject, Project, Table } from './types'
+import type { LegacyProject, Project, Table, TableViewConfig, View } from './types'
 
 /**
  * Reads a project written by any version of the app. Projects saved before
@@ -33,8 +33,24 @@ function normalizeTable(table: Partial<Table>): Table {
     name: table.name ?? 'Table',
     fields: Array.isArray(table.fields) ? table.fields : [],
     records: Array.isArray(table.records) ? table.records : [],
-    views: Array.isArray(table.views) ? table.views : []
+    views: Array.isArray(table.views) ? table.views.map(normalizeView) : []
   }
+}
+
+/** Kanban/gallery/calendar views gained filters and sorts after plenty of them
+ *  had already been written to disk, so fill in the lists the rest of the app
+ *  expects to always be there. */
+function normalizeView(view: View): View {
+  const config = (view.config ?? {}) as Partial<TableViewConfig>
+  return {
+    ...view,
+    config: {
+      ...config,
+      hiddenFieldIds: Array.isArray(config.hiddenFieldIds) ? config.hiddenFieldIds : [],
+      filters: Array.isArray(config.filters) ? config.filters : [],
+      sorts: Array.isArray(config.sorts) ? config.sorts : []
+    }
+  } as View
 }
 
 /** Records across every table — what the sidebar and project cards show. */

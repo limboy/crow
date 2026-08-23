@@ -83,10 +83,15 @@ export interface SortRule {
 
 export type RowHeight = 'short' | 'medium' | 'tall'
 
-export interface TableViewConfig {
-  hiddenFieldIds: string[]
+/** Record selection and ordering, which every view type applies the same way
+ *  before laying its records out. */
+export interface ViewRules {
   filters: FilterRule[]
   sorts: SortRule[]
+}
+
+export interface TableViewConfig extends ViewRules {
+  hiddenFieldIds: string[]
   groupByFieldId?: string
   rowHeight?: RowHeight
   /** Column width in pixels per field id; unset falls back to the default width. */
@@ -97,20 +102,20 @@ export interface TableViewConfig {
  *  Gallery and Calendar views. */
 export type ImageAspectRatio = '3:5' | '1:1' | '5:3'
 
-export interface KanbanViewConfig {
+export interface KanbanViewConfig extends ViewRules {
   groupByFieldId?: string
   hiddenFieldIds: string[]
   imageFieldId?: string
   imageAspectRatio?: ImageAspectRatio
 }
 
-export interface GalleryViewConfig {
+export interface GalleryViewConfig extends ViewRules {
   coverFieldId?: string
   hiddenFieldIds: string[]
   imageAspectRatio?: ImageAspectRatio
 }
 
-export interface CalendarViewConfig {
+export interface CalendarViewConfig extends ViewRules {
   dateFieldId?: string
   hiddenFieldIds: string[]
   mode?: 'month' | 'week'

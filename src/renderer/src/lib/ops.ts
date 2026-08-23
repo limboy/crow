@@ -180,16 +180,18 @@ export function deleteField(table: Table, fieldId: string): Table {
     return { ...r, values: rest }
   }
   const views = table.views.map((view): View => {
-    const hiddenFieldIds = view.config.hiddenFieldIds.filter((id) => id !== fieldId)
+    const shared = {
+      hiddenFieldIds: view.config.hiddenFieldIds.filter((id) => id !== fieldId),
+      filters: view.config.filters.filter((f) => f.fieldId !== fieldId),
+      sorts: view.config.sorts.filter((s) => s.fieldId !== fieldId)
+    }
     switch (view.type) {
       case 'table':
         return {
           ...view,
           config: {
             ...view.config,
-            hiddenFieldIds,
-            filters: view.config.filters.filter((f) => f.fieldId !== fieldId),
-            sorts: view.config.sorts.filter((s) => s.fieldId !== fieldId),
+            ...shared,
             groupByFieldId:
               view.config.groupByFieldId === fieldId ? undefined : view.config.groupByFieldId
           }
@@ -199,7 +201,7 @@ export function deleteField(table: Table, fieldId: string): Table {
           ...view,
           config: {
             ...view.config,
-            hiddenFieldIds,
+            ...shared,
             groupByFieldId:
               view.config.groupByFieldId === fieldId ? undefined : view.config.groupByFieldId
           }
@@ -209,7 +211,7 @@ export function deleteField(table: Table, fieldId: string): Table {
           ...view,
           config: {
             ...view.config,
-            hiddenFieldIds,
+            ...shared,
             coverFieldId: view.config.coverFieldId === fieldId ? undefined : view.config.coverFieldId
           }
         }
@@ -218,7 +220,7 @@ export function deleteField(table: Table, fieldId: string): Table {
           ...view,
           config: {
             ...view.config,
-            hiddenFieldIds,
+            ...shared,
             dateFieldId: view.config.dateFieldId === fieldId ? undefined : view.config.dateFieldId
           }
         }

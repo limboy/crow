@@ -5,7 +5,10 @@ import { Button } from '@/components/ui/button'
 import { FieldDialog } from '@/components/FieldDialog'
 import { ValueDisplay } from '@/components/ValueDisplay'
 import { FieldsPopover } from '@/components/toolbar/FieldsPopover'
+import { FilterPopover } from '@/components/toolbar/FilterPopover'
 import { ImageFieldSelect } from '@/components/toolbar/ImageFieldSelect'
+import { SortPopover } from '@/components/toolbar/SortPopover'
+import { applyFilters, applySorts } from '@/lib/derive'
 import { displayValue, isEmptyValue } from '@/lib/fields'
 import { imageAspectRatioInfo } from '@/lib/imageAspect'
 import { useProjectTables } from '@/lib/relations'
@@ -27,6 +30,9 @@ export function GalleryView({
   onOpenRecord: (recordId: string) => void
 }): React.JSX.Element {
   const config = view.config
+  // Sorting by a relation field compares the labels of the linked records,
+  // which live in a sibling table.
+  const tables = useProjectTables()
   const imageFields = table.fields.filter((f) => f.type === 'image')
   const coverField = imageFields.find((f) => f.id === config.coverFieldId)
   const [addFieldOpen, setAddFieldOpen] = useState(false)
@@ -41,6 +47,13 @@ export function GalleryView({
 
   const cardFields = table.fields.filter(
     (f) => !config.hiddenFieldIds.includes(f.id) && f.id !== coverField?.id
+  )
+
+  const derived = applySorts(
+    applyFilters(table.records, config.filters, table.fields),
+    config.sorts,
+    table.fields,
+    tables
   )
 
   return (
@@ -73,11 +86,21 @@ export function GalleryView({
           onChange={(hiddenFieldIds) => patchConfig({ hiddenFieldIds })}
           lockedFieldId={table.fields[0]?.id}
         />
+        <FilterPopover
+          fields={table.fields}
+          filters={config.filters}
+          onChange={(filters) => patchConfig({ filters })}
+        />
+        <SortPopover
+          fields={table.fields}
+          sorts={config.sorts}
+          onChange={(sorts) => patchConfig({ sorts })}
+        />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4">
-          {table.records.map((record) => (
+          {derived.map((record) => (
             <GalleryCard
               key={record.id}
               record={record}

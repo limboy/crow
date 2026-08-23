@@ -27,14 +27,20 @@ export function newView(type: View['type'], name?: string): View {
         config: { hiddenFieldIds: [], filters: [], sorts: [], rowHeight: 'short' }
       }
     case 'kanban':
-      return { ...base, type, config: { hiddenFieldIds: [] } }
+      return { ...base, type, config: { hiddenFieldIds: [], filters: [], sorts: [] } }
     case 'gallery':
-      return { ...base, type, config: { hiddenFieldIds: [] } }
+      return { ...base, type, config: { hiddenFieldIds: [], filters: [], sorts: [] } }
     case 'calendar':
       return {
         ...base,
         type,
-        config: { dateFieldId: CREATED_AT_DATE_SOURCE, hiddenFieldIds: [], mode: 'month' }
+        config: {
+          dateFieldId: CREATED_AT_DATE_SOURCE,
+          hiddenFieldIds: [],
+          filters: [],
+          sorts: [],
+          mode: 'month'
+        }
       }
   }
 }

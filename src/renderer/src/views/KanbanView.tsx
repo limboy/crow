@@ -18,9 +18,17 @@ import { ChoiceBadge } from '@/components/ChoiceBadge'
 import { ValueDisplay } from '@/components/ValueDisplay'
 import { FieldDialog } from '@/components/FieldDialog'
 import { FieldsPopover } from '@/components/toolbar/FieldsPopover'
+import { FilterPopover } from '@/components/toolbar/FilterPopover'
 import { GroupSelect } from '@/components/toolbar/GroupSelect'
 import { ImageFieldSelect } from '@/components/toolbar/ImageFieldSelect'
-import { groupRecords, UNCATEGORIZED, type RecordGroup } from '@/lib/derive'
+import { SortPopover } from '@/components/toolbar/SortPopover'
+import {
+  applyFilters,
+  applySorts,
+  groupRecords,
+  UNCATEGORIZED,
+  type RecordGroup
+} from '@/lib/derive'
 import { displayValue, isEmptyValue } from '@/lib/fields'
 import { imageAspectRatioInfo } from '@/lib/imageAspect'
 import * as ops from '@/lib/ops'
@@ -42,6 +50,9 @@ export function KanbanView({
   onOpenRecord: (recordId: string) => void
 }): React.JSX.Element {
   const config = view.config
+  // Sorting by a relation field compares the labels of the linked records,
+  // which live in a sibling table.
+  const tables = useProjectTables()
   const selectFields = table.fields.filter((f) => f.type === 'select')
   const groupField = selectFields.find((f) => f.id === config.groupByFieldId)
   const imageFields = table.fields.filter((f) => f.type === 'image')
@@ -133,8 +144,16 @@ export function KanbanView({
     )
   }
 
-  const groups = groupRecords(table.records, groupField)
-  const activeRecord = table.records.find((r) => r.id === activeRecordId)
+  // Sorting before grouping is what orders the cards inside each column,
+  // since groupRecords keeps the order it's handed.
+  const derived = applySorts(
+    applyFilters(table.records, config.filters, table.fields),
+    config.sorts,
+    table.fields,
+    tables
+  )
+  const groups = groupRecords(derived, groupField)
+  const activeRecord = derived.find((r) => r.id === activeRecordId)
 
   return (
     <div className="flex h-full flex-col">
@@ -223,6 +242,16 @@ function Toolbar({
         hiddenFieldIds={config.hiddenFieldIds}
         onChange={(hiddenFieldIds) => patchConfig({ hiddenFieldIds })}
         lockedFieldId={table.fields[0]?.id}
+      />
+      <FilterPopover
+        fields={table.fields}
+        filters={config.filters}
+        onChange={(filters) => patchConfig({ filters })}
+      />
+      <SortPopover
+        fields={table.fields}
+        sorts={config.sorts}
+        onChange={(sorts) => patchConfig({ sorts })}
       />
     </div>
   )

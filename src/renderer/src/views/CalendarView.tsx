@@ -36,8 +36,11 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FieldDialog } from '@/components/FieldDialog'
 import { ValueDisplay } from '@/components/ValueDisplay'
 import { FieldsPopover } from '@/components/toolbar/FieldsPopover'
+import { FilterPopover } from '@/components/toolbar/FilterPopover'
 import { GroupSelect } from '@/components/toolbar/GroupSelect'
 import { ImageFieldSelect } from '@/components/toolbar/ImageFieldSelect'
+import { SortPopover } from '@/components/toolbar/SortPopover'
+import { applyFilters, applySorts } from '@/lib/derive'
 import { displayValue, isEmptyValue } from '@/lib/fields'
 import { imageAspectRatioInfo } from '@/lib/imageAspect'
 import { useProjectTables } from '@/lib/relations'
@@ -70,6 +73,9 @@ export function CalendarView({
   const [anchorDate, setAnchorDate] = useState(() => new Date())
   const [addFieldOpen, setAddFieldOpen] = useState(false)
   const config = view.config
+  // Sorting by a relation field compares the labels of the linked records,
+  // which live in a sibling table.
+  const tables = useProjectTables()
   const dateFields = table.fields.filter((field) => field.type === 'date')
   const dateSources = [CREATED_DATE_SOURCE, ...dateFields]
   const dateSource =
@@ -83,6 +89,13 @@ export function CalendarView({
       !config.hiddenFieldIds.includes(field.id) &&
       field.id !== dateSource.id &&
       field.id !== imageField?.id
+  )
+
+  const derived = applySorts(
+    applyFilters(table.records, config.filters, table.fields),
+    config.sorts,
+    table.fields,
+    tables
   )
 
   const patchConfig = (patch: Partial<CalendarViewType['config']>): void => {
@@ -151,6 +164,16 @@ export function CalendarView({
             lockedFieldId={table.fields[0]?.id}
           />
         )}
+        <FilterPopover
+          fields={table.fields}
+          filters={config.filters}
+          onChange={(filters) => patchConfig({ filters })}
+        />
+        <SortPopover
+          fields={table.fields}
+          sorts={config.sorts}
+          onChange={(sorts) => patchConfig({ sorts })}
+        />
 
         <div className="ml-auto flex items-center gap-2">
           <Tabs
@@ -196,7 +219,8 @@ export function CalendarView({
       <CalendarGrid
         anchorDate={anchorDate}
         mode={mode}
-        table={table}
+        records={derived}
+        titleField={table.fields[0]}
         dateSourceId={dateSource.id}
         cardFields={cardFields}
         imageField={imageField}
@@ -229,7 +253,8 @@ export function CalendarView({
 function CalendarGrid({
   anchorDate,
   mode,
-  table,
+  records: allRecords,
+  titleField,
   dateSourceId,
   cardFields,
   imageField,
@@ -239,7 +264,8 @@ function CalendarGrid({
 }: {
   anchorDate: Date
   mode: CalendarMode
-  table: Table
+  records: RecordRow[]
+  titleField?: Field
   dateSourceId: string
   cardFields: Field[]
   imageField?: Field
@@ -247,7 +273,6 @@ function CalendarGrid({
   onOpenRecord: (recordId: string) => void
   onAddRecord?: (day: Date) => void
 }): React.JSX.Element {
-  const titleField = table.fields[0]
   const month = startOfMonth(anchorDate)
   const range =
     mode === 'month'
@@ -265,7 +290,7 @@ function CalendarGrid({
   const visibleEventCapacity = useVisibleEventCapacity(gridRef, rowCount)
   const recordsByDay = new Map<string, RecordRow[]>()
 
-  for (const record of table.records) {
+  for (const record of allRecords) {
     const createdDate = new Date(record.createdAt)
     const value =
       dateSourceId === CREATED_AT_DATE_SOURCE && isValid(createdDate)
