@@ -184,6 +184,7 @@ export default function ProjectPage(): React.JSX.Element {
           <RecordSheet
             projectId={project.id}
             table={activeTable}
+            view={activeView}
             recordId={openRecordId}
             onClose={() => setOpenRecordId(null)}
             update={update}

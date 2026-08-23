@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { CalendarIcon, ChevronsUpDown } from 'lucide-react'
-import type { Field } from '@shared/types'
+import type { Field, ImageAspectRatio } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -21,12 +21,16 @@ export function ValueEditor({
   projectId,
   field,
   value,
-  onChange
+  onChange,
+  imageAspectRatio
 }: {
   projectId: string
   field: Field
   value: unknown
   onChange: (value: unknown) => void
+  /** Aspect ratio to crop this field's preview to, when it's the image field
+   *  a view features as a cover/thumbnail. */
+  imageAspectRatio?: ImageAspectRatio
 }): React.JSX.Element {
   switch (field.type) {
     case 'text':
@@ -70,7 +74,14 @@ export function ValueEditor({
     case 'relation':
       return <RelationValueEditor field={field} value={value} onChange={onChange} />
     case 'image':
-      return <ImageEditor projectId={projectId} value={value} onChange={onChange} />
+      return (
+        <ImageEditor
+          projectId={projectId}
+          value={value}
+          onChange={onChange}
+          aspectRatio={imageAspectRatio}
+        />
+      )
     case 'audio':
       return <AudioEditor projectId={projectId} value={value} onChange={onChange} />
   }

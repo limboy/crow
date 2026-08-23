@@ -1,19 +1,26 @@
 import { useState } from 'react'
 import { FolderOpen, X } from 'lucide-react'
+import type { ImageAspectRatio } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { imageAspectRatioInfo } from '@/lib/imageAspect'
 import { useFileDrop } from '@/lib/useFileDrop'
 import { cn } from '@/lib/utils'
 
 export function ImageEditor({
   projectId,
   value,
-  onChange
+  onChange,
+  aspectRatio
 }: {
   projectId: string
   value: unknown
   onChange: (value: unknown) => void
+  /** Crops the preview to the ratio a view features this field's images at
+   *  (e.g. Gallery's cover image), so the detail panel matches what the
+   *  record looks like out in that view. Left free-form when unset. */
+  aspectRatio?: ImageAspectRatio
 }): React.JSX.Element {
   const current = typeof value === 'string' && value ? value : undefined
   const [urlDraft, setUrlDraft] = useState('')
@@ -47,13 +54,16 @@ export function ImageEditor({
         <div className="relative">
           <button
             type="button"
-            className="block w-full cursor-zoom-in"
+            className={cn(
+              'block w-full cursor-zoom-in overflow-hidden rounded-md border',
+              aspectRatio && imageAspectRatioInfo(aspectRatio).className
+            )}
             onClick={() => setPreviewOpen(true)}
           >
             <img
               src={current}
               alt=""
-              className="max-h-40 w-full rounded-md border object-cover"
+              className={cn('w-full object-cover', aspectRatio ? 'h-full' : 'max-h-40')}
             />
           </button>
           <Button

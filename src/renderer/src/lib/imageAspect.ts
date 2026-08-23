@@ -1,5 +1,5 @@
 import { RectangleHorizontal, RectangleVertical, Square, type LucideIcon } from 'lucide-react'
-import type { ImageAspectRatio } from '@shared/types'
+import type { ImageAspectRatio, View } from '@shared/types'
 
 export interface ImageAspectRatioInfo {
   value: ImageAspectRatio
@@ -22,4 +22,21 @@ export function imageAspectRatioInfo(ratio: ImageAspectRatio | undefined): Image
     IMAGE_ASPECT_RATIO_OPTIONS.find((option) => option.value === ratio) ??
     IMAGE_ASPECT_RATIO_OPTIONS.find((option) => option.value === DEFAULT_ASPECT_RATIO)!
   )
+}
+
+/** The image field a view features as a cover/thumbnail, and the aspect
+ *  ratio it's shown at. Table view has neither. */
+export function viewCoverImage(view: View | undefined): {
+  fieldId?: string
+  aspectRatio?: ImageAspectRatio
+} {
+  switch (view?.type) {
+    case 'gallery':
+      return { fieldId: view.config.coverFieldId, aspectRatio: view.config.imageAspectRatio }
+    case 'kanban':
+    case 'calendar':
+      return { fieldId: view.config.imageFieldId, aspectRatio: view.config.imageAspectRatio }
+    default:
+      return {}
+  }
 }

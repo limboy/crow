@@ -1,11 +1,12 @@
 import { Trash2 } from 'lucide-react'
-import type { Table } from '@shared/types'
+import type { Table, View } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { ValueEditor } from '@/components/editors/ValueEditor'
 import { displayValue, fieldTypeInfo } from '@/lib/fields'
+import { viewCoverImage } from '@/lib/imageAspect'
 import * as ops from '@/lib/ops'
 import { useProjectTables } from '@/lib/relations'
 import type { TableUpdater } from '@/lib/queries'
@@ -13,21 +14,32 @@ import type { TableUpdater } from '@/lib/queries'
 export function RecordSheet({
   projectId,
   table,
+  view,
   recordId,
   onClose,
   update
 }: {
   projectId: string
   table: Table
+  /** The view the record was opened from — its cover/thumbnail image field
+   *  and aspect ratio (Gallery, Kanban, Calendar) carry over to the panel,
+   *  so the image isn't cropped differently here than out in the view. */
+  view?: View
   recordId: string | null
   onClose: () => void
   update: TableUpdater
 }): React.JSX.Element {
   const tables = useProjectTables()
   const record = table.records.find((r) => r.id === recordId)
+  const coverImage = viewCoverImage(view)
   const titleField = table.fields[0]
+  // Image/audio fields display as internal file paths (e.g. app-image:///...),
+  // which aren't meaningful as a record title.
+  const titleIsPath = titleField?.type === 'image' || titleField?.type === 'audio'
   const title =
-    record && titleField ? displayValue(titleField, record.values[titleField.id], tables) : ''
+    record && titleField && !titleIsPath
+      ? displayValue(titleField, record.values[titleField.id], tables)
+      : ''
 
   return (
     <Sheet open={record !== undefined} onOpenChange={(open) => !open && onClose()}>
@@ -53,6 +65,9 @@ export function RecordSheet({
                         value={record.values[field.id]}
                         onChange={(value) =>
                           update((p) => ops.setRecordValue(p, record.id, field.id, value))
+                        }
+                        imageAspectRatio={
+                          field.id === coverImage.fieldId ? coverImage.aspectRatio : undefined
                         }
                       />
                     </div>

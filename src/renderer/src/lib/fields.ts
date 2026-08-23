@@ -130,7 +130,10 @@ export function linkedRecords(field: Field, value: unknown, tables: Table[]): Re
  *  links — one level is enough to name a row, and it can't recurse. */
 export function recordLabel(table: Table, record: RecordRow): string {
   const primary = table.fields[0]
-  const text = primary ? displayValue(primary, record.values[primary.id]) : ''
+  // Image/audio fields display as internal file paths (e.g. app-image:///...),
+  // which aren't meaningful as a record label.
+  const showable = primary && primary.type !== 'image' && primary.type !== 'audio'
+  const text = showable ? displayValue(primary, record.values[primary.id]) : ''
   return text || 'Untitled'
 }
 

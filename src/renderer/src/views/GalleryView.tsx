@@ -160,10 +160,15 @@ function GalleryCard({
   const coverValue = coverField ? record.values[coverField.id] : undefined
   const hasCover = coverField !== undefined && !isEmptyValue(coverField, coverValue)
   const tables = useProjectTables()
-  const title = titleField ? displayValue(titleField, record.values[titleField.id], tables) : ''
+  // If the title field is the same field used as the cover image, showing its
+  // raw value (e.g. an app-image:// URL) as text would be redundant with the
+  // image itself, so treat it as if there's no title to show.
+  const showTitle = titleField !== undefined && titleField.id !== coverField?.id
+  const title = showTitle ? displayValue(titleField, record.values[titleField.id], tables) : ''
   const detailFields = cardFields.filter(
     (f) => f.id !== titleField?.id && !isEmptyValue(f, record.values[f.id])
   )
+  const hasContent = showTitle || detailFields.length > 0
 
   return (
     <div
@@ -184,25 +189,27 @@ function GalleryCard({
           )}
         </div>
       )}
-      <div className="p-3">
-        <div className={cn('truncate text-sm font-medium', !title && 'text-muted-foreground')}>
-          {title || 'Untitled'}
-        </div>
-        {detailFields.length > 0 && (
-          <div className="mt-2 flex flex-col gap-1.5">
-            {detailFields.map((field) => (
-              <div key={field.id} className="flex min-w-0 flex-col gap-0.5">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
-                  {field.name}
-                </span>
-                <div className="flex text-xs">
-                  <ValueDisplay field={field} value={record.values[field.id]} />
-                </div>
-              </div>
-            ))}
+      {hasContent && (
+        <div className="p-3">
+          <div className={cn('truncate text-sm font-medium', !title && 'text-muted-foreground')}>
+            {title || 'Untitled'}
           </div>
-        )}
-      </div>
+          {detailFields.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {detailFields.map((field) => (
+                <div key={field.id} className="flex min-w-0 flex-col gap-0.5">
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                    {field.name}
+                  </span>
+                  <div className="flex text-xs">
+                    <ValueDisplay field={field} value={record.values[field.id]} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
