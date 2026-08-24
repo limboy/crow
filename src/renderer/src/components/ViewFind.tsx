@@ -190,7 +190,10 @@ export function ViewFindControl({
           <Button
             variant="ghost"
             size="icon-sm"
-            className={cn('shrink-0', className)}
+            className={cn(
+              'shrink-0 focus-visible:border-transparent focus-visible:ring-0',
+              className
+            )}
             title={`Find in view (${keys})`}
             aria-label="Find in view"
           >
