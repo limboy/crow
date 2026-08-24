@@ -54,7 +54,7 @@ export function ValueDisplay({
       const target = relationTable(field, tables)
       if (!target) return null
       return (
-        <span className={cn('flex flex-wrap items-center gap-1', className)}>
+        <span className={cn('flex flex-wrap items-center gap-x-1 gap-y-1.5', className)}>
           {linkedRecords(field, value, tables).map((record) => (
             <RecordBadge key={record.id} label={recordLabel(target, record)} />
           ))}

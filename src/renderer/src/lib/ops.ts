@@ -19,19 +19,273 @@ import { parseCellText } from './cellText'
 
 // --- Tables -----------------------------------------------------------------
 
+function replaceTable(project: Project, table: Table): Project {
+  return {
+    ...project,
+    tables: project.tables.map((candidate) => (candidate.id === table.id ? table : candidate))
+  }
+}
+
+function relationIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((id): id is string => typeof id === 'string')
+}
+
+function sameIds(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((id, index) => id === b[index])
+}
+
+function setRelationIds(record: RecordRow, fieldId: string, ids: string[]): RecordRow {
+  const previous = relationIds(record.values[fieldId])
+  if (sameIds(previous, ids) && (ids.length > 0 || !(fieldId in record.values))) return record
+  if (ids.length === 0) {
+    const { [fieldId]: _removed, ...values } = record.values
+    return { ...record, values }
+  }
+  return { ...record, values: { ...record.values, [fieldId]: ids } }
+}
+
+function uniqueFieldName(table: Table, preferred: string): string {
+  const taken = new Set(table.fields.map((field) => field.name.toLowerCase()))
+  if (!taken.has(preferred.toLowerCase())) return preferred
+  for (let suffix = 2; ; suffix += 1) {
+    const candidate = `${preferred} ${suffix}`
+    if (!taken.has(candidate.toLowerCase())) return candidate
+  }
+}
+
+function relationFieldChanged(before: Table, after: Table, fieldId: string): boolean {
+  const previous = before.fields.find((field) => field.id === fieldId)
+  const next = after.fields.find((field) => field.id === fieldId)
+  if (previous?.type !== 'relation' || next?.type !== 'relation') return previous !== next
+  if (
+    previous.relation?.tableId !== next.relation?.tableId ||
+    previous.relation?.multiple !== next.relation?.multiple ||
+    previous.relation?.inverseFieldId !== next.relation?.inverseFieldId
+  ) {
+    return true
+  }
+  if (before.records.length !== after.records.length) return true
+  const previousRecords = new Map(before.records.map((record) => [record.id, record]))
+  return after.records.some((record) => {
+    const old = previousRecords.get(record.id)
+    return !old || !sameIds(relationIds(old.values[fieldId]), relationIds(record.values[fieldId]))
+  })
+}
+
+/** Makes one side authoritative, then derives the paired field from it. */
+function syncRelationPair(
+  project: Project,
+  sourceTableId: string,
+  sourceFieldId: string,
+  beforeSource?: Table
+): Project {
+  let source = project.tables.find((table) => table.id === sourceTableId)
+  let sourceField = source?.fields.find((field) => field.id === sourceFieldId)
+  if (!source || sourceField?.type !== 'relation' || !sourceField.relation) return project
+
+  let target = project.tables.find((table) => table.id === sourceField!.relation!.tableId)
+  let inverse = target?.fields.find(
+    (field) => field.id === sourceField!.relation!.inverseFieldId && field.type === 'relation'
+  )
+  if (!target || inverse?.type !== 'relation' || !inverse.relation) return project
+
+  const validTargetIds = new Set(target.records.map((record) => record.id))
+  const oldLinks = new Map(
+    (beforeSource?.records ?? []).map((record) => [record.id, relationIds(record.values[sourceFieldId])])
+  )
+  const links = new Map<string, string[]>()
+  source.records.forEach((record) => {
+    const unique = [...new Set(relationIds(record.values[sourceFieldId]))].filter((id) =>
+      validTargetIds.has(id)
+    )
+    links.set(record.id, sourceField!.relation!.multiple ? unique : unique.slice(0, 1))
+  })
+
+  // If the reverse side is single-link, a newly made link wins and the old
+  // source is disconnected. That keeps both stored fields truthful instead
+  // of silently showing two sources on one side and one on the other.
+  if (!inverse.relation.multiple) {
+    for (const targetRecord of target.records) {
+      const candidates = source.records
+        .filter((record) => links.get(record.id)?.includes(targetRecord.id))
+        .map((record) => record.id)
+      if (candidates.length <= 1) continue
+      const newlyLinked = candidates.filter(
+        (recordId) => !(oldLinks.get(recordId) ?? []).includes(targetRecord.id)
+      )
+      const winner = newlyLinked.at(-1) ?? candidates[0]
+      candidates.forEach((recordId) => {
+        if (recordId === winner) return
+        links.set(
+          recordId,
+          (links.get(recordId) ?? []).filter((targetId) => targetId !== targetRecord.id)
+        )
+      })
+    }
+  }
+
+  source = {
+    ...source,
+    records: source.records.map((record) =>
+      setRelationIds(record, sourceFieldId, links.get(record.id) ?? [])
+    )
+  }
+  project = replaceTable(project, source)
+
+  // Self-relations may have changed the same table above, so resolve the
+  // target again before writing the inverse field.
+  target = project.tables.find((table) => table.id === target!.id)!
+  const reverse = new Map(target.records.map((record) => [record.id, [] as string[]]))
+  source.records.forEach((record) => {
+    for (const targetId of links.get(record.id) ?? []) {
+      reverse.get(targetId)?.push(record.id)
+    }
+  })
+  target = {
+    ...target,
+    records: target.records.map((record) =>
+      setRelationIds(record, inverse!.id, reverse.get(record.id) ?? [])
+    )
+  }
+  return replaceTable(project, target)
+}
+
+function reconcileTableRelations(project: Project, before: Table, tableId: string): Project {
+  const initial = project.tables.find((table) => table.id === tableId)
+  if (!initial) return project
+  let current: Table = initial
+
+  // Removing either half removes the paired field as well. Changing a
+  // relation's target creates a fresh pair and retires the old one.
+  for (const oldField of before.fields) {
+    if (oldField.type !== 'relation' || !oldField.relation?.inverseFieldId) continue
+    const nextField = current.fields.find((field) => field.id === oldField.id)
+    const keepsPair =
+      nextField?.type === 'relation' &&
+      nextField.relation?.tableId === oldField.relation.tableId &&
+      nextField.relation?.inverseFieldId === oldField.relation.inverseFieldId
+    if (keepsPair) continue
+    const target = project.tables.find((table) => table.id === oldField.relation!.tableId)
+    if (target?.fields.some((field) => field.id === oldField.relation!.inverseFieldId)) {
+      project = replaceTable(project, deleteField(target, oldField.relation.inverseFieldId))
+    }
+  }
+
+  const refreshed = project.tables.find((table) => table.id === tableId)
+  if (!refreshed) return project
+  current = refreshed
+
+  // Every relation owns a real field in the linked table. Broken or legacy
+  // metadata gets a fresh inverse rather than hijacking an unrelated field.
+  for (const snapshot of [...current.fields]) {
+    if (snapshot.type !== 'relation' || !snapshot.relation) continue
+    let field: Field = current.fields.find((candidate) => candidate.id === snapshot.id)!
+    if (field.type !== 'relation' || !field.relation) continue
+    let target: Table | undefined = project.tables.find(
+      (table) => table.id === field.relation!.tableId
+    )
+    if (!target) continue
+
+    let inverseId = field.relation.inverseFieldId
+    if (!inverseId) {
+      inverseId = crypto.randomUUID()
+      current = {
+        ...current,
+        fields: current.fields.map((candidate) =>
+          candidate.id === field.id
+            ? { ...candidate, relation: { ...candidate.relation!, inverseFieldId: inverseId } }
+            : candidate
+        )
+      }
+      project = replaceTable(project, current)
+      target = project.tables.find((table) => table.id === field.relation!.tableId)!
+      field = current.fields.find((candidate) => candidate.id === field.id)!
+    }
+    let inverse: Field | undefined = target.fields.find((candidate) => candidate.id === inverseId)
+    const usableInverse =
+      inverse?.type === 'relation' &&
+      inverse.relation?.tableId === current.id &&
+      (!inverse.relation.inverseFieldId || inverse.relation.inverseFieldId === field.id) &&
+      !(target.id === current.id && inverse.id === field.id)
+    if (inverse && !usableInverse) {
+      inverseId = crypto.randomUUID()
+      current = {
+        ...current,
+        fields: current.fields.map((candidate) =>
+          candidate.id === field.id
+            ? { ...candidate, relation: { ...candidate.relation!, inverseFieldId: inverseId } }
+            : candidate
+        )
+      }
+      project = replaceTable(project, current)
+      target = project.tables.find((table) => table.id === field.relation!.tableId)!
+      inverse = undefined
+      field = current.fields.find((candidate) => candidate.id === field.id)!
+    }
+
+    if (!inverse) {
+      inverse = {
+        id: inverseId,
+        name: uniqueFieldName(target, current.name),
+        type: 'relation',
+        relation: { tableId: current.id, multiple: true, inverseFieldId: field.id }
+      }
+      target = { ...target, fields: [...target.fields, inverse] }
+      project = replaceTable(project, target)
+      if (target.id === current.id) current = target
+    } else if (inverse.type === 'relation' && inverse.relation) {
+      const patched = {
+        ...inverse,
+        relation: { ...inverse.relation, tableId: current.id, inverseFieldId: field.id }
+      }
+      target = {
+        ...target,
+        fields: target.fields.map((candidate) => (candidate.id === inverse!.id ? patched : candidate))
+      }
+      project = replaceTable(project, target)
+      if (target.id === current.id) current = target
+    }
+  }
+
+  current = project.tables.find((table) => table.id === tableId)!
+  const processed = new Set<string>()
+  for (const field of current.fields) {
+    if (field.type !== 'relation' || !field.relation) continue
+    const target = project.tables.find((table) => table.id === field.relation!.tableId)
+    const inverse = target?.fields.find(
+      (candidate) => candidate.id === field.relation!.inverseFieldId && candidate.type === 'relation'
+    )
+    if (!target || inverse?.type !== 'relation') continue
+    const pairKey = [current.id, field.id, target.id, inverse.id].sort().join(':')
+    if (processed.has(pairKey)) continue
+    processed.add(pairKey)
+
+    const fieldChanged = relationFieldChanged(before, current, field.id)
+    let authorityField = field
+    if (target.id === current.id) {
+      const inverseChanged = relationFieldChanged(before, current, inverse.id)
+      if (!fieldChanged && !inverseChanged) continue
+      if (inverseChanged && !fieldChanged) authorityField = inverse
+    } else if (!fieldChanged) {
+      continue
+    }
+    project = syncRelationPair(project, current.id, authorityField.id, before)
+    current = project.tables.find((table) => table.id === tableId)!
+  }
+  return project
+}
+
 /** Returns the project unchanged when `fn` leaves the table as it was — the
  *  transforms below hand back their input when an edit doesn't apply, and
  *  callers (see useUpdateProject) use identity to tell a real edit apart from
  *  a no-op. */
 export function patchTable(project: Project, tableId: string, fn: (table: Table) => Table): Project {
-  let changed = false
-  const tables = project.tables.map((t) => {
-    if (t.id !== tableId) return t
-    const next = fn(t)
-    if (next !== t) changed = true
-    return next
-  })
-  return changed ? { ...project, tables } : project
+  const before = project.tables.find((table) => table.id === tableId)
+  if (!before) return project
+  const next = fn(before)
+  if (next === before) return project
+  return reconcileTableRelations(replaceTable(project, next), before, tableId)
 }
 
 /** Appends a table with a name that doesn't collide with the existing ones. */
@@ -58,10 +312,8 @@ export function renameTable(project: Project, tableId: string, name: string): Pr
 }
 
 /** Deep-copies a table so edits to the copy can't reach back into the
- *  original. Field/record/view ids are kept: they're only ever resolved
- *  within their own table, so a copy that reuses them stays self-consistent.
- *  Self-relations are re-pointed at the copy for the same reason — and since
- *  record ids are kept too, the links still resolve. */
+ *  original. Self-relation pairs stay inside the copy; relations to another
+ *  table get new inverse fields so they don't share the original's pair. */
 export function duplicateTable(project: Project, tableId: string): Project {
   const index = project.tables.findIndex((t) => t.id === tableId)
   if (index === -1) return project
@@ -72,14 +324,17 @@ export function duplicateTable(project: Project, tableId: string): Project {
     id: cloneId,
     name: `${source.name} copy`
   }
-  clone.fields = clone.fields.map((f) =>
-    f.relation?.tableId === source.id
-      ? { ...f, relation: { ...f.relation, tableId: cloneId } }
-      : f
-  )
+  clone.fields = clone.fields.map((field) => {
+    if (field.type !== 'relation' || !field.relation) return field
+    return field.relation.tableId === source.id
+      ? { ...field, relation: { ...field.relation, tableId: cloneId } }
+      : { ...field, relation: { ...field.relation, inverseFieldId: crypto.randomUUID() } }
+  })
   const tables = [...project.tables]
   tables.splice(index + 1, 0, clone)
-  return { ...project, tables }
+  const inserted = { ...project, tables }
+  const emptyBefore: Table = { ...clone, fields: [], records: [] }
+  return reconcileTableRelations(inserted, emptyBefore, clone.id)
 }
 
 /** A project always keeps at least one table, mirroring how views work.

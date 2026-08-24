@@ -35,6 +35,8 @@ export interface RelationOptions {
   tableId: string
   /** Whether a cell may hold more than one link. */
   multiple: boolean
+  /** The relation field in `tableId` that stores the same links in reverse. */
+  inverseFieldId: string
 }
 
 export interface Field {

@@ -87,20 +87,23 @@ async function listProjectIds() {
  * table. Applied on read only — the file is upgraded the next time it's saved.
  */
 function migrateProject(project) {
-  if (Array.isArray(project.tables)) return project
-  const { fields, records, views, ...rest } = project
-  return {
-    ...rest,
-    tables: [
-      {
-        id: uuid(),
-        name: project.name?.trim() || 'Table',
-        fields: Array.isArray(fields) ? fields : [],
-        records: Array.isArray(records) ? records : [],
-        views: Array.isArray(views) ? views : []
-      }
-    ]
+  let migrated = project
+  if (!Array.isArray(project.tables)) {
+    const { fields, records, views, ...rest } = project
+    migrated = {
+      ...rest,
+      tables: [
+        {
+          id: uuid(),
+          name: project.name?.trim() || 'Table',
+          fields: Array.isArray(fields) ? fields : [],
+          records: Array.isArray(records) ? records : [],
+          views: Array.isArray(views) ? views : []
+        }
+      ]
+    }
   }
+  return normalizeRelationPairs(migrated)
 }
 
 async function readAllProjects() {
@@ -328,6 +331,7 @@ async function applyValues(table, record, input, project) {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
     fail('Values must be a JSON object keyed by field name, e.g. {"Name": "Buy milk", "Status": "Todo"}')
   }
+  const changedRelations = new Set()
   for (const [name, value] of Object.entries(input)) {
     const field = resolveField(table, name)
     if (value === null) {
@@ -335,7 +339,9 @@ async function applyValues(table, record, input, project) {
     } else {
       record.values[field.id] = await coerceValue(field, value, project)
     }
+    if (field.type === 'relation') changedRelations.add(field.id)
   }
+  return changedRelations
 }
 
 /** Stored record -> agent-friendly shape (values keyed by field name, choices
@@ -390,7 +396,7 @@ function buildField(name, type, choiceNames = [], relation) {
       choices: choiceNames.map((n, i) => ({ id: uuid(), name: n, color: CHOICE_COLORS[i % CHOICE_COLORS.length] }))
     }
   }
-  if (type === 'relation') field.relation = relation
+  if (type === 'relation') field.relation = { ...relation, inverseFieldId: relation.inverseFieldId ?? uuid() }
   return field
 }
 
@@ -414,6 +420,140 @@ function deleteFieldEverywhere(table, fieldId) {
   }
 }
 
+function relationIds(value) {
+  return Array.isArray(value) ? value.filter((id) => typeof id === 'string') : []
+}
+
+function setRelationIds(record, fieldId, ids) {
+  if (ids.length === 0) delete record.values[fieldId]
+  else record.values[fieldId] = ids
+}
+
+function uniqueFieldName(table, preferred) {
+  const taken = new Set(table.fields.map((field) => field.name.toLowerCase()))
+  if (!taken.has(preferred.toLowerCase())) return preferred
+  for (let suffix = 2; ; suffix += 1) {
+    const candidate = `${preferred} ${suffix}`
+    if (!taken.has(candidate.toLowerCase())) return candidate
+  }
+}
+
+function ensureInverseField(project, source, field) {
+  if (field.type !== 'relation' || !field.relation) return undefined
+  const target = linkedTable(project, field)
+  if (!target) {
+    field.relation.inverseFieldId ??= uuid()
+    return undefined
+  }
+  field.relation.inverseFieldId ||= uuid()
+  let inverse = target.fields.find((candidate) => candidate.id === field.relation.inverseFieldId)
+  const usable =
+    inverse?.type === 'relation' &&
+    inverse.relation?.tableId === source.id &&
+    (!inverse.relation.inverseFieldId || inverse.relation.inverseFieldId === field.id) &&
+    !(target.id === source.id && inverse.id === field.id)
+  if (inverse && !usable) {
+    field.relation.inverseFieldId = uuid()
+    inverse = undefined
+  }
+  if (!inverse) {
+    inverse = buildField(uniqueFieldName(target, source.name), 'relation', [], {
+      tableId: source.id,
+      multiple: true,
+      inverseFieldId: field.id
+    })
+    inverse.id = field.relation.inverseFieldId
+    target.fields.push(inverse)
+  } else {
+    inverse.relation.tableId = source.id
+    inverse.relation.inverseFieldId = field.id
+  }
+  return { target, inverse }
+}
+
+function syncRelationField(project, source, field, beforeSource) {
+  const pair = ensureInverseField(project, source, field)
+  if (!pair) return
+  const { target, inverse } = pair
+  const validTargets = new Set(target.records.map((record) => record.id))
+  const beforeLinks = new Map(
+    (beforeSource?.records ?? []).map((record) => [record.id, relationIds(record.values[field.id])])
+  )
+  const links = new Map()
+  for (const record of source.records) {
+    const ids = [...new Set(relationIds(record.values[field.id]))].filter((id) => validTargets.has(id))
+    links.set(record.id, field.relation.multiple === false ? ids.slice(0, 1) : ids)
+  }
+
+  if (inverse.relation.multiple === false) {
+    for (const targetRecord of target.records) {
+      const candidates = source.records
+        .filter((record) => (links.get(record.id) ?? []).includes(targetRecord.id))
+        .map((record) => record.id)
+      if (candidates.length <= 1) continue
+      const added = candidates.filter(
+        (recordId) => !(beforeLinks.get(recordId) ?? []).includes(targetRecord.id)
+      )
+      const winner = added.at(-1) ?? candidates[0]
+      for (const recordId of candidates) {
+        if (recordId === winner) continue
+        links.set(recordId, links.get(recordId).filter((id) => id !== targetRecord.id))
+      }
+    }
+  }
+
+  for (const record of source.records) setRelationIds(record, field.id, links.get(record.id) ?? [])
+  const reverse = new Map(target.records.map((record) => [record.id, []]))
+  for (const record of source.records) {
+    for (const targetId of links.get(record.id) ?? []) reverse.get(targetId)?.push(record.id)
+  }
+  for (const record of target.records) {
+    setRelationIds(record, inverse.id, reverse.get(record.id) ?? [])
+  }
+}
+
+function syncTableRelations(project, table, beforeTable, onlyFieldIds) {
+  for (const field of [...table.fields]) ensureInverseField(project, table, field)
+  const processed = new Set()
+  for (const field of table.fields) {
+    if (field.type !== 'relation' || !field.relation) continue
+    if (onlyFieldIds && !onlyFieldIds.has(field.id)) continue
+    const pair = ensureInverseField(project, table, field)
+    if (!pair) continue
+    const key = [table.id, field.id, pair.target.id, pair.inverse.id].sort().join(':')
+    if (processed.has(key)) continue
+    processed.add(key)
+    syncRelationField(project, table, field, beforeTable)
+  }
+}
+
+function normalizeRelationPairs(project) {
+  for (const table of project.tables) {
+    for (const field of [...table.fields]) ensureInverseField(project, table, field)
+  }
+  const processed = new Set()
+  for (const table of project.tables) {
+    for (const field of table.fields) {
+      if (field.type !== 'relation' || !field.relation) continue
+      const pair = ensureInverseField(project, table, field)
+      if (!pair) continue
+      const key = [table.id, field.id, pair.target.id, pair.inverse.id].sort().join(':')
+      if (processed.has(key)) continue
+      processed.add(key)
+      syncRelationField(project, table, field)
+    }
+  }
+  return project
+}
+
+function deleteRelationField(project, table, field) {
+  if (field.type === 'relation' && field.relation?.inverseFieldId) {
+    const target = linkedTable(project, field)
+    if (target) deleteFieldEverywhere(target, field.relation.inverseFieldId)
+  }
+  deleteFieldEverywhere(table, field.id)
+}
+
 function tableSchema(project, table) {
   return {
     id: table.id,
@@ -424,7 +564,13 @@ function tableSchema(project, table) {
       type: f.type,
       ...(f.options ? { choices: f.options.choices.map((c) => c.name) } : {}),
       ...(f.type === 'relation'
-        ? { linkTable: linkedTable(project, f)?.name ?? null, multiple: f.relation?.multiple !== false }
+        ? {
+            linkTable: linkedTable(project, f)?.name ?? null,
+            inverseField: linkedTable(project, f)?.fields.find(
+              (candidate) => candidate.id === f.relation?.inverseFieldId
+            )?.name ?? null,
+            multiple: f.relation?.multiple !== false
+          }
         : {})
     })),
     views: table.views.map((v) => ({ name: v.name, type: v.type }))
@@ -449,7 +595,7 @@ function buildTable(name, fields) {
     name,
     fields,
     records: [],
-    views: [{ id: uuid(), name: 'Table', type: 'table', config: { hiddenFieldIds: [], filters: [], sorts: [], rowHeight: 'short' } }]
+    views: [{ id: uuid(), name: 'Table', type: 'table', config: { hiddenFieldIds: [], filters: [], filterMatch: 'all', sorts: [], rowHeight: 'short' } }]
   }
 }
 
@@ -469,7 +615,14 @@ function fieldsFromFlag(raw, project, self) {
       s.type,
       s.choices ?? [],
       s.type === 'relation'
-        ? { tableId: linkTargetFor(scope, s.linkTable, String(s.name)).id, multiple: s.multiple !== false }
+        ? {
+            tableId:
+              typeof s.linkTable === 'string' && s.linkTable.toLowerCase() === 'self'
+                ? self.id
+                : linkTargetFor(scope, s.linkTable, String(s.name)).id,
+            multiple: s.multiple !== false,
+            inverseFieldId: uuid()
+          }
         : undefined
     )
   )
@@ -543,7 +696,8 @@ COMMANDS
                                              {"name":"Author","type":"relation","linkTable":"People"}]'
                                            A relation spec names its target table with
                                            "linkTable" (the table being created counts) and may
-                                           set "multiple": false to allow only one link.
+                                           set "multiple": false to allow only one link. A paired
+                                           field is created in the linked table automatically.
                                            Default: a single "Name" text field.
                                            --table names the table (default "Table").
   delete-project <project> --yes           Delete a project permanently (requires --yes)
@@ -560,7 +714,8 @@ COMMANDS
                                            Add a field. Types: ${FIELD_TYPES.join(', ')}
                                            A relation field takes --link-table <name>, the table
                                            in the same project its records link to (may be its
-                                           own table), plus --single to allow only one link.
+                                           own table), plus --single to allow only one link. Its
+                                           paired field is created automatically.
   delete-field <project> <name> [--table NAME]
                                            Remove a field and all its values
   list-records <project> [--table NAME] [--where JSON] [--limit N] [--offset N]
@@ -647,6 +802,7 @@ const commands = {
       tables: [table]
     }
     table.fields = fieldsFromFlag(flags.fields, project, table)
+    syncTableRelations(project, table)
     await saveProject(project)
     output(schemaOf(project))
   },
@@ -688,6 +844,7 @@ const commands = {
       const table = buildTable(name, [])
       table.fields = fieldsFromFlag(flags.fields, project, table)
       project.tables.push(table)
+      syncTableRelations(project, table)
       return schemaOf(project, table)
     })
     output(schema)
@@ -734,9 +891,15 @@ const commands = {
       assertFieldNameFree(table, name)
       const relation =
         type === 'relation'
-          ? { tableId: linkTargetFor(project, flags['link-table'], name).id, multiple: flags.single !== true }
+          ? {
+              tableId: linkTargetFor(project, flags['link-table'], name).id,
+              multiple: flags.single !== true,
+              inverseFieldId: uuid()
+            }
           : undefined
-      table.fields.push(buildField(name, type, choices, relation))
+      const field = buildField(name, type, choices, relation)
+      table.fields.push(field)
+      if (field.type === 'relation') syncRelationField(project, table, field)
       return schemaOf(project, table)
     })
     output(schema)
@@ -747,7 +910,7 @@ const commands = {
     if (!ref || !name) fail('Usage: delete-field <project> <name> [--table NAME]')
     const schema = await mutateProject(ref, (project) => {
       const table = resolveTable(project, flags.table)
-      deleteFieldEverywhere(table, resolveField(table, name).id)
+      deleteRelationField(project, table, resolveField(table, name))
       return schemaOf(project, table)
     })
     output(schema)
@@ -784,13 +947,17 @@ const commands = {
     const inputs = Array.isArray(input) ? input : [input]
     const project = await resolveProject(ref)
     const table = resolveTable(project, flags.table)
+    const before = structuredClone(table)
     const created = []
+    const changedRelations = new Set()
     for (const values of inputs) {
       const record = { id: uuid(), createdAt: now(), values: {} }
-      await applyValues(table, record, values, project)
+      const changed = await applyValues(table, record, values, project)
+      changed.forEach((fieldId) => changedRelations.add(fieldId))
       table.records.push(record)
       created.push(record)
     }
+    syncTableRelations(project, table, before, changedRelations)
     project.updatedAt = now()
     await saveProject(project)
     output({ table: table.name, created: created.map((r) => humanize(table, r, project)) })
@@ -803,7 +970,9 @@ const commands = {
     const project = await resolveProject(ref)
     const table = resolveTable(project, flags.table)
     const record = resolveRecord(table, recordRef)
-    await applyValues(table, record, input, project)
+    const before = structuredClone(table)
+    const changedRelations = await applyValues(table, record, input, project)
+    syncTableRelations(project, table, before, changedRelations)
     project.updatedAt = now()
     await saveProject(project)
     output(humanize(table, record, project))
@@ -815,7 +984,9 @@ const commands = {
     const project = await resolveProject(ref)
     const table = resolveTable(project, flags.table)
     const record = resolveRecord(table, recordRef)
+    const before = structuredClone(table)
     table.records = table.records.filter((r) => r.id !== record.id)
+    syncTableRelations(project, table, before)
     project.updatedAt = now()
     await saveProject(project)
     output({ deleted: humanize(table, record, project) })

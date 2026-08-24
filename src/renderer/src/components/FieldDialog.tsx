@@ -90,12 +90,20 @@ export function FieldDialog({
   const handleSubmit = (): void => {
     const trimmed = name.trim()
     if (!canSubmit) return
+    const keepsInverse =
+      field?.type === 'relation' && field.relation?.tableId === relationTableId
     onSubmit({
       id: field?.id ?? uuid(),
       name: trimmed,
       type,
       options: hasChoices ? { choices } : undefined,
-      relation: isRelation ? { tableId: relationTableId, multiple: relationMultiple } : undefined
+      relation: isRelation
+        ? {
+            tableId: relationTableId,
+            multiple: relationMultiple,
+            inverseFieldId: keepsInverse ? field.relation!.inverseFieldId : uuid()
+          }
+        : undefined
     })
     onOpenChange(false)
   }

@@ -685,7 +685,12 @@ export function TableView({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete “{deleteFieldTarget?.name}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the field and its values from every record.
+              {deleteFieldTarget?.type === 'relation'
+                ? `This also removes its paired field from “${
+                    tables.find((candidate) => candidate.id === deleteFieldTarget.relation?.tableId)
+                      ?.name ?? 'the linked table'
+                  }”.`
+                : 'This removes the field and its values from every record.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -839,6 +844,8 @@ function CellContent({
 }): React.JSX.Element {
   const [draft, setDraft] = useState('')
   const wrap = lineClamp > 1
+  const hasMultipleRelationRecords =
+    field.type === 'relation' && Array.isArray(value) && value.length > 1
   const anchorRef = useRef<HTMLDivElement>(null)
   const editFinishedRef = useRef(false)
   const isFileField = field.type === 'image' || field.type === 'audio'
@@ -892,6 +899,7 @@ function CellContent({
           className={cn(
             'flex h-full w-full cursor-default overflow-hidden px-2 text-left',
             wrap ? 'flex-wrap content-start items-start gap-1 py-1.5' : 'items-center',
+            !wrap && hasMultipleRelationRecords && 'py-1.5',
             selected && !editing && 'ring-2 ring-inset ring-ring',
             isFileField && fileDrop.isOver && 'bg-accent ring-2 ring-inset ring-primary'
           )}
