@@ -3,6 +3,7 @@ import type { ConfirmDialogOptions, ContextMenuItem, Project } from '@shared/typ
 import { createProject, deleteProject, ensureProjectsRootDir, getProject, listProjects, saveProject } from './storage'
 import { importImageData, pickImage } from './images'
 import { exportProject, importProject } from './transfer'
+import { exportCsv, importCsv } from './csv'
 import { importAudioData, pickAudio } from './audio'
 import { getReadyUpdateVersion, installReadyUpdate } from './updater'
 import { defaultDataDir, getDataDir, setDataDir } from './config'
@@ -18,6 +19,10 @@ export function registerIpc(): void {
     exportProject(BrowserWindow.fromWebContents(e.sender), id)
   )
   ipcMain.handle('projects:import', (e) => importProject(BrowserWindow.fromWebContents(e.sender)))
+  ipcMain.handle('csv:export', (e, suggestedName: string, content: string) =>
+    exportCsv(BrowserWindow.fromWebContents(e.sender), suggestedName, content)
+  )
+  ipcMain.handle('csv:import', (e) => importCsv(BrowserWindow.fromWebContents(e.sender)))
   ipcMain.handle('images:pick', (e, projectId: string) =>
     pickImage(BrowserWindow.fromWebContents(e.sender), projectId)
   )

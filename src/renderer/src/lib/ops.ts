@@ -4,10 +4,12 @@ import {
   type Field,
   type Project,
   type RecordRow,
+  type SelectChoice,
   type Table,
   type View,
   type ViewType
 } from '@shared/types'
+import { parseCellText } from './cellText'
 
 /**
  * Pure transforms of the two things the app edits: a single Table (its
@@ -43,6 +45,12 @@ function nextTableName(project: Project): string {
     const name = `Table ${n}`
     if (!taken.has(name)) return name
   }
+}
+
+/** Adds a table built elsewhere — a CSV import, say — rather than the starter
+ *  schema `addTable` creates. */
+export function insertTable(project: Project, table: Table): Project {
+  return { ...project, tables: [...project.tables, table] }
 }
 
 export function renameTable(project: Project, tableId: string, name: string): Project {
@@ -242,5 +250,123 @@ export function deleteField(table: Table, fieldId: string): Table {
     fields: table.fields.filter((f) => f.id !== fieldId),
     records: table.records.map(stripValues),
     views
+  }
+}
+
+// --- Clipboard --------------------------------------------------------------
+
+/** Compares two cell values, so a paste that changes nothing doesn't leave a
+ *  step in the undo history. Multi-value cells are arrays rebuilt on every
+ *  parse, so identity alone isn't enough. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((item, i) => Object.is(item, b[i]))
+  }
+  return false
+}
+
+export interface PasteTarget {
+  /** Cell the block's top-left corner lands on. */
+  anchor: { recordId: string; fieldId: string }
+  /** Record ids in the order the view shows them: a paste follows what's on
+   *  screen, not the underlying record order. */
+  orderedRecordIds: string[]
+  /** Visible field ids in column order. The block is clipped at the last one —
+   *  pasting eight columns into the second-to-last writes two. */
+  visibleFieldIds: string[]
+  /** Sibling tables, for resolving relation labels back to record ids. */
+  tables: Table[]
+}
+
+/**
+ * Writes a block of pasted text into the table, starting at `anchor` and
+ * spilling right and down. Rows past the end of the view are created, the way
+ * a spreadsheet grows to fit what you paste into it; columns past the last
+ * visible field are dropped, since there's nowhere to put them.
+ *
+ * The whole block lands as one transform, so it's one undo step no matter how
+ * many cells it covered.
+ */
+export function pasteCells(table: Table, grid: string[][], target: PasteTarget): Table {
+  const { anchor, orderedRecordIds, visibleFieldIds, tables } = target
+  const colStart = visibleFieldIds.indexOf(anchor.fieldId)
+  const rowStart = orderedRecordIds.indexOf(anchor.recordId)
+  if (grid.length === 0 || colStart === -1 || rowStart === -1) return table
+
+  const fieldsById = new Map(table.fields.map((f) => [f.id, f]))
+  const recordsById = new Map(table.records.map((r) => [r.id, r]))
+  /** Select choices the paste invented, per field, so the same new value
+   *  repeated down a column only creates one. */
+  const addedChoices = new Map<string, SelectChoice[]>()
+  const patched = new Map<string, Record<string, unknown>>()
+  const created: RecordRow[] = []
+  const order = [...orderedRecordIds]
+  let changed = false
+
+  grid.forEach((cells, rowOffset) => {
+    let recordId = order[rowStart + rowOffset]
+    if (recordId === undefined) {
+      const record = newRecord()
+      created.push(record)
+      recordsById.set(record.id, record)
+      // Rows are filled in sequence, so this only ever appends.
+      order[rowStart + rowOffset] = record.id
+      recordId = record.id
+      changed = true
+    }
+    const record = recordsById.get(recordId)
+    if (!record) return
+    const values = patched.get(recordId) ?? { ...record.values }
+
+    cells.forEach((text, colOffset) => {
+      const fieldId = visibleFieldIds[colStart + colOffset]
+      const field = fieldId === undefined ? undefined : fieldsById.get(fieldId)
+      if (!field) return
+      const parsed = parseCellText(field, text, {
+        choices: [...(field.options?.choices ?? []), ...(addedChoices.get(field.id) ?? [])],
+        tables
+      })
+      // null means the text isn't usable here (a word in a number column, an
+      // image cell): the cell keeps what it had rather than being emptied.
+      if (!parsed) return
+      if (parsed.newChoices?.length) {
+        addedChoices.set(field.id, [
+          ...(addedChoices.get(field.id) ?? []),
+          ...parsed.newChoices
+        ])
+        changed = true
+      }
+      if (!sameValue(values[field.id], parsed.value)) changed = true
+      values[field.id] = parsed.value
+    })
+
+    patched.set(recordId, values)
+  })
+
+  if (!changed) return table
+
+  const fields =
+    addedChoices.size === 0
+      ? table.fields
+      : table.fields.map((field) => {
+          const added = addedChoices.get(field.id)
+          if (!added) return field
+          return {
+            ...field,
+            options: { choices: [...(field.options?.choices ?? []), ...added] }
+          }
+        })
+
+  return {
+    ...table,
+    fields,
+    records: [
+      ...table.records.map((record) => {
+        const values = patched.get(record.id)
+        return values ? { ...record, values } : record
+      }),
+      ...created.map((record) => ({ ...record, values: patched.get(record.id) ?? record.values }))
+    ]
   }
 }

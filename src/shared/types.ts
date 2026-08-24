@@ -231,6 +231,13 @@ export interface ConfirmDialogOptions {
   destructive?: boolean
 }
 
+/** A CSV file read in from disk, ready to be parsed by the renderer. */
+export interface CsvFile {
+  /** File name without its extension, used to name the table it becomes. */
+  name: string
+  text: string
+}
+
 export interface Api {
   /** Shows a native OS context menu at the cursor; resolves with the clicked item's id, or null if dismissed. */
   showContextMenu: (items: ContextMenuItem[]) => Promise<string | null>
@@ -247,6 +254,12 @@ export interface Api {
   /** Reads a `.crow` file the user picks in as a new project (fresh id, so
    *  importing the same bundle twice gives two projects); null if cancelled. */
   importProject: () => Promise<Project | null>
+  /** Writes already-serialized CSV text to a file the user picks; resolves
+   *  with the saved path, or null if cancelled. */
+  exportCsv: (suggestedName: string, content: string) => Promise<string | null>
+  /** Reads a CSV/TSV file the user picks as raw text — the renderer parses it,
+   *  since the clipboard needs the same parser; null if cancelled. */
+  importCsv: () => Promise<CsvFile | null>
   /** Images and audio are stored alongside the project that owns them, so
    *  every picker/import call needs to know which project it's for. */
   pickImage: (projectId: string) => Promise<string | null>

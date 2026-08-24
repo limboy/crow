@@ -17,8 +17,8 @@ const VERSION = 2
  *  and agent-editable as the on-disk project files. */
 export const BUNDLE_EXT = 'crow'
 
-/** Keeps a project name usable as a file name across platforms. */
-function toFileName(name: string): string {
+/** Keeps a project or table name usable as a file name across platforms. */
+export function toFileName(name: string): string {
   const cleaned = name.replace(/[/\\:*?"<>|]/g, '-').trim()
   return cleaned || 'project'
 }

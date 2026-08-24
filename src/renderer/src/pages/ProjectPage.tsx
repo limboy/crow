@@ -36,8 +36,10 @@ import { KanbanView } from '@/views/KanbanView'
 import { GalleryView } from '@/views/GalleryView'
 import { CalendarView } from '@/views/CalendarView'
 import * as ops from '@/lib/ops'
-import { applyFilters } from '@/lib/derive'
-import { ProjectTablesContext } from '@/lib/relations'
+import { detectDelimiter, parseDelimited, serializeDelimited } from '@/lib/csv'
+import { csvRows, tableFromCsv } from '@/lib/csvTable'
+import { applyFilters, applySorts } from '@/lib/derive'
+import { ProjectTablesContext, useProjectTables } from '@/lib/relations'
 import {
   useProject,
   useProjectHistory,
@@ -49,7 +51,7 @@ import {
   type TableUpdater
 } from '@/lib/queries'
 import { isMac } from '@/lib/format'
-import { cn } from '@/lib/utils'
+import { cn, isTextEntry } from '@/lib/utils'
 
 export const VIEW_ICONS: Record<ViewType, LucideIcon> = {
   table: Table2,
@@ -204,15 +206,6 @@ export default function ProjectPage(): React.JSX.Element {
   )
 }
 
-/** True while the focus is somewhere the browser has its own undo stack —
- *  a cell being typed into, a rename field — where ⌘Z should walk back
- *  through the text, not through the project's edits. */
-function isTextEntry(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false
-  if (target.isContentEditable || target instanceof HTMLTextAreaElement) return true
-  return target instanceof HTMLInputElement && !['button', 'checkbox', 'radio'].includes(target.type)
-}
-
 /** ⌘Z / ⇧⌘Z, plus Ctrl+Y where that's the convention. Bound on the document
  *  rather than a container so it works no matter which view is up. */
 function useUndoRedoShortcuts({ undo, redo }: ProjectHistory): void {
@@ -278,6 +271,26 @@ function TableTabs({
 }): React.JSX.Element {
   const [renameTable, setRenameTable] = useState<Table | null>(null)
   const [renameValue, setRenameValue] = useState('')
+
+  /** Keeps two imports of the same file from producing two identical tabs. */
+  const availableTableName = (base: string): string => {
+    const taken = new Set(project.tables.map((t) => t.name))
+    let name = base
+    for (let n = 2; taken.has(name); n++) name = `${base} ${n}`
+    return name
+  }
+
+  const importCsv = async (): Promise<void> => {
+    const file = await window.api.importCsv()
+    // Null covers both a cancelled picker and a file the main process already
+    // reported on, so there's nothing left to say here.
+    if (!file) return
+    const grid = parseDelimited(file.text, detectDelimiter(file.text))
+    const imported = tableFromCsv(availableTableName(file.name.trim() || 'Imported'), grid)
+    if (!imported) return
+    update((p) => ops.insertTable(p, imported))
+    onSelect(imported.id)
+  }
 
   const confirmDeleteTable = async (table: Table): Promise<void> => {
     const confirmed = await window.api.showConfirmDialog({
@@ -347,6 +360,10 @@ function TableTabs({
                     }
                   >
                     Duplicate table
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => void importCsv()}>
+                    Import CSV…
                   </DropdownMenuItem>
                   {/* A project always keeps at least one table. */}
                   {project.tables.length > 1 && (
@@ -422,10 +439,30 @@ function ViewTabs({
 }): React.JSX.Element {
   const [renameView, setRenameView] = useState<View | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  // Relation columns export as the labels of the records they link to, which
+  // live in a sibling table.
+  const tables = useProjectTables()
 
   // The first view is the table's default/primary view and can't be
   // deleted, mirroring how Airtable/Notion-style tools protect it.
   const defaultViewId = table.views[0]?.id
+
+  /**
+   * Exports what the view shows, not the raw table: its filters and sorts
+   * applied, its hidden fields left out. Every view type keeps those three
+   * settings, so a Kanban or Gallery exports as sensibly as a grid does.
+   */
+  const exportCsv = async (view: View): Promise<void> => {
+    const fields = table.fields.filter((f) => !view.config.hiddenFieldIds.includes(f.id))
+    const records = applySorts(
+      applyFilters(table.records, view.config.filters, table.fields),
+      view.config.sorts,
+      table.fields,
+      tables
+    )
+    const name = view.id === defaultViewId ? table.name : `${table.name} - ${view.name}`
+    await window.api.exportCsv(name, serializeDelimited(csvRows(fields, records, tables), ','))
+  }
 
   const confirmDeleteView = async (view: View): Promise<void> => {
     const confirmed = await window.api.showConfirmDialog({
@@ -476,6 +513,10 @@ function ViewTabs({
                     }}
                   >
                     Rename view
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => void exportCsv(view)}>
+                    Export CSV…
                   </DropdownMenuItem>
                   {view.id !== defaultViewId && (
                     <>

@@ -42,6 +42,7 @@ import { useProjectTables } from '@/lib/relations'
 import type { TableUpdater } from '@/lib/queries'
 import { rowHeightInfo, type RowHeightInfo } from '@/lib/rowHeight'
 import { useFileDrop } from '@/lib/useFileDrop'
+import { useGridClipboard } from '@/lib/useGridClipboard'
 import { cn } from '@/lib/utils'
 
 type TableViewType = Extract<View, { type: 'table' }>
@@ -125,6 +126,17 @@ export function TableView({
   const groups: RecordGroup[] | null = groupField
     ? groupRecords(derived, groupField, tables).filter((g) => g.records.length > 0)
     : null
+
+  // ⌘C copies the checked rows, or the selected cell; ⌘V writes a block from
+  // any spreadsheet in, starting at the selected cell.
+  useGridClipboard({
+    records: derived,
+    fields: visibleFields,
+    tables,
+    selectedCell,
+    selectedRowIds,
+    update
+  })
 
   const selectedVisibleCount = derived.reduce(
     (count, r) => (selectedRowIds.has(r.id) ? count + 1 : count),

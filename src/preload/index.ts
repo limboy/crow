@@ -11,6 +11,9 @@ const api: Api = {
   deleteProject: (id: string) => ipcRenderer.invoke('projects:delete', id),
   exportProject: (id: string) => ipcRenderer.invoke('projects:export', id),
   importProject: () => ipcRenderer.invoke('projects:import'),
+  exportCsv: (suggestedName: string, content: string) =>
+    ipcRenderer.invoke('csv:export', suggestedName, content),
+  importCsv: () => ipcRenderer.invoke('csv:import'),
   pickImage: (projectId: string) => ipcRenderer.invoke('images:pick', projectId),
   pickAudio: (projectId: string) => ipcRenderer.invoke('audio:pick', projectId),
   importImageData: (projectId: string, name: string, data: ArrayBuffer) =>
