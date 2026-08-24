@@ -846,11 +846,6 @@ function CalendarEventButton({
         )}
         <div className="p-2">
           <div className="flex min-w-0 items-center gap-1.5">
-            {formattedTime && (
-              <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                {formattedTime}
-              </span>
-            )}
             <span
               className={cn(
                 'truncate text-[13px] font-medium',
