@@ -60,15 +60,6 @@ const CREATED_DATE_SOURCE: Field = {
   type: 'date'
 }
 
-function availableFieldName(fields: Field[], preferred: string): string {
-  const taken = new Set(fields.map((field) => field.name.toLowerCase()))
-  if (!taken.has(preferred.toLowerCase())) return preferred
-  for (let suffix = 2; ; suffix += 1) {
-    const candidate = `${preferred} ${suffix}`
-    if (!taken.has(candidate.toLowerCase())) return candidate
-  }
-}
-
 export function CalendarView({
   table,
   view,
@@ -90,6 +81,7 @@ export function CalendarView({
   const dateSources = [CREATED_DATE_SOURCE, ...dateFields]
   const dateSource =
     dateSources.find((field) => field.id === config.dateFieldId) ?? CREATED_DATE_SOURCE
+  const canAddOnDay = dateSource.id !== CREATED_AT_DATE_SOURCE
   const mode = config.mode ?? 'month'
   const showHours = config.showHours ?? true
   const imageFields = table.fields.filter((field) => field.type === 'image')
@@ -119,35 +111,10 @@ export function CalendarView({
   }
 
   const addRecordOn = (day: Date, timed = false): void => {
+    if (!canAddOnDay) return
     update((p) => {
       const value = format(day, timed ? "yyyy-MM-dd'T'HH:mm" : 'yyyy-MM-dd')
-      let next = p
-      let fieldId = dateSource.id
-
-      // Created is useful for browsing records chronologically, but it is not
-      // editable. Scheduling from that view promotes the calendar to a real
-      // date field so the chosen day/hour can be stored.
-      if (fieldId === CREATED_AT_DATE_SOURCE) {
-        const existing = p.fields.find((field) => field.type === 'date')
-        if (existing) {
-          fieldId = existing.id
-        } else {
-          const field: Field = {
-            id: crypto.randomUUID(),
-            name: availableFieldName(p.fields, 'Date'),
-            type: 'date'
-          }
-          next = ops.addField(next, field)
-          fieldId = field.id
-        }
-        next = ops.patchView(next, view.id, (candidate) =>
-          candidate.type === 'calendar'
-            ? { ...candidate, config: { ...candidate.config, dateFieldId: fieldId } }
-            : candidate
-        )
-      }
-
-      next = ops.addRecord(next, { [fieldId]: value })
+      const next = ops.addRecord(p, { [dateSource.id]: value })
       const created = next.records[next.records.length - 1]
       onOpenRecord(created.id)
       return next
@@ -268,7 +235,7 @@ export function CalendarView({
         imageField={imageField}
         aspectRatio={config.imageAspectRatio}
         onOpenRecord={onOpenRecord}
-        onAddRecord={addRecordOn}
+        onAddRecord={canAddOnDay ? addRecordOn : undefined}
       />
 
       <FieldDialog
