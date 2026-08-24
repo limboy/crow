@@ -30,6 +30,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { PageHeader } from '@/components/PageHeader'
+import { ProjectCommandPalette } from '@/components/ProjectSearchDialogs'
 import { RecordSheet } from '@/components/RecordSheet'
 import { TableView } from '@/views/TableView'
 import { KanbanView } from '@/views/KanbanView'
@@ -82,6 +83,7 @@ export default function ProjectPage(): React.JSX.Element {
   // view you left rather than resetting to the first one.
   const [activeViewIds, setActiveViewIds] = useState<Record<string, string>>({})
   const [openRecordId, setOpenRecordId] = useState<string | null>(null)
+  const { commandOpen, setCommandOpen } = useCommandShortcut()
 
   // A project can disappear out from under this route (deleted elsewhere,
   // data folder switched to one that doesn't have it, stale link, etc).
@@ -105,6 +107,10 @@ export default function ProjectPage(): React.JSX.Element {
 
   const selectView = (viewId: string): void =>
     setActiveViewIds((prev) => (activeTable ? { ...prev, [activeTable.id]: viewId } : prev))
+  const selectTableView = (tableId: string, viewId: string): void => {
+    setActiveTableId(tableId)
+    setActiveViewIds((prev) => ({ ...prev, [tableId]: viewId }))
+  }
 
   if (isLoading) return <div className="h-full" />
   if (!project || isError) {
@@ -201,9 +207,49 @@ export default function ProjectPage(): React.JSX.Element {
             update={update}
           />
         )}
+
+        <ProjectCommandPalette
+          open={commandOpen}
+          onOpenChange={setCommandOpen}
+          projects={projects ?? []}
+          project={project}
+          activeTableId={activeTable?.id}
+          activeViewId={activeView?.id}
+          onSelectProject={(projectId) => navigate(`/project/${projectId}`)}
+          onSelectTable={setActiveTableId}
+          onSelectView={selectTableView}
+        />
       </div>
     </ProjectTablesContext.Provider>
   )
+}
+
+/** Cmd/Ctrl+K opens navigation; each searchable view owns Cmd/Ctrl+F. */
+function useCommandShortcut(): {
+  commandOpen: boolean
+  setCommandOpen: (open: boolean) => void
+} {
+  const [commandOpen, setCommandOpen] = useState(false)
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (
+        event.isComposing ||
+        !(event.metaKey || event.ctrlKey) ||
+        event.altKey ||
+        event.shiftKey ||
+        event.key.toLowerCase() !== 'k'
+      ) {
+        return
+      }
+      event.preventDefault()
+      setCommandOpen(true)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  return { commandOpen, setCommandOpen }
 }
 
 /** ⌘Z / ⇧⌘Z, plus Ctrl+Y where that's the convention. Bound on the document

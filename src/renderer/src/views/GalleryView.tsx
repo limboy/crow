@@ -4,6 +4,12 @@ import type { Field, ImageAspectRatio, Table, RecordRow, View } from '@shared/ty
 import { Button } from '@/components/ui/button'
 import { FieldDialog } from '@/components/FieldDialog'
 import { ValueDisplay } from '@/components/ValueDisplay'
+import {
+  getFindCellState,
+  useViewFind,
+  ViewFindControl,
+  type ViewFindController
+} from '@/components/ViewFind'
 import { FieldsPopover } from '@/components/toolbar/FieldsPopover'
 import { FilterPopover } from '@/components/toolbar/FilterPopover'
 import { ImageFieldSelect } from '@/components/toolbar/ImageFieldSelect'
@@ -55,6 +61,7 @@ export function GalleryView({
     table.fields,
     tables
   )
+  const find = useViewFind(derived, cardFields, tables)
 
   return (
     <div className="flex h-full flex-col">
@@ -96,6 +103,7 @@ export function GalleryView({
           sorts={config.sorts}
           onChange={(sorts) => patchConfig({ sorts })}
         />
+        <ViewFindControl find={find} className="ml-auto" />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -108,6 +116,7 @@ export function GalleryView({
               aspectRatio={config.imageAspectRatio}
               cardFields={cardFields}
               titleField={table.fields[0]}
+              find={find}
               onClick={() => onOpenRecord(record.id)}
             />
           ))}
@@ -148,6 +157,7 @@ function GalleryCard({
   aspectRatio,
   cardFields,
   titleField,
+  find,
   onClick
 }: {
   record: RecordRow
@@ -155,6 +165,7 @@ function GalleryCard({
   aspectRatio?: ImageAspectRatio
   cardFields: Field[]
   titleField?: Field
+  find: ViewFindController
   onClick: () => void
 }): React.JSX.Element {
   const coverValue = coverField ? record.values[coverField.id] : undefined
@@ -169,10 +180,22 @@ function GalleryCard({
     (f) => f.id !== titleField?.id && !isEmptyValue(f, record.values[f.id])
   )
   const hasContent = showTitle || detailFields.length > 0
+  const findStates = [...(showTitle && titleField ? [titleField] : []), ...detailFields].map(
+    (field) => getFindCellState(find, record.id, field.id)
+  )
+  const cardFindState = {
+    matched: findStates.some((state) => state.matched),
+    active: findStates.some((state) => state.active)
+  }
 
   return (
     <div
-      className="overflow-hidden rounded-lg border bg-card shadow-xs transition-shadow hover:shadow-md"
+      data-find-active={cardFindState.active ? 'true' : undefined}
+      className={cn(
+        'overflow-hidden rounded-lg border bg-card shadow-xs transition-shadow hover:shadow-md',
+        cardFindState.matched && 'ring-4 ring-find-match',
+        cardFindState.active && 'ring-find-highlight'
+      )}
       onClick={onClick}
     >
       {coverField && (

@@ -24,6 +24,9 @@
   --input: oklch(0.922 0 0);
   /*--ring: oklch(0.708 0 0);*/
   --ring: oklch(0.5573 0.1921 257.95);
+  --find-highlight: #ffa405;
+  --find-match: #ffde02;
+  --find-match-background: #fff4d4;
   --radius: 0.625rem;
   --sidebar: hsl(0 0% 98%);
   --sidebar-foreground: hsl(240 5.3% 26.1%);
@@ -85,6 +88,9 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-find-highlight: var(--find-highlight);
+  --color-find-match: var(--find-match);
+  --color-find-match-background: var(--find-match-background);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

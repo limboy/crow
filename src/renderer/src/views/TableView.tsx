@@ -25,6 +25,12 @@ import { ChoiceBadge } from '@/components/ChoiceBadge'
 import { ValueDisplay } from '@/components/ValueDisplay'
 import { FieldDialog } from '@/components/FieldDialog'
 import { SummaryBar } from '@/components/SummaryBar'
+import {
+  getFindCellState,
+  useViewFind,
+  ViewFindControl,
+  type ViewFindController
+} from '@/components/ViewFind'
 import { AudioEditor } from '@/components/editors/AudioEditor'
 import { DateEditor } from '@/components/editors/DateEditor'
 import { ImageEditor } from '@/components/editors/ImageEditor'
@@ -126,6 +132,11 @@ export function TableView({
   const groups: RecordGroup[] | null = groupField
     ? groupRecords(derived, groupField, tables).filter((g) => g.records.length > 0)
     : null
+  const find = useViewFind(
+    groups ? groups.flatMap((group) => group.records) : derived,
+    visibleFields,
+    tables
+  )
 
   // ⌘C copies the checked rows, or the selected cell; ⌘V writes a block from
   // any spreadsheet in, starting at the selected cell.
@@ -334,6 +345,7 @@ export function TableView({
               selected={
                 selectedCell?.recordId === record.id && selectedCell?.fieldId === field.id
               }
+              find={find}
               onSelect={() => setSelectedCell({ recordId: record.id, fieldId: field.id })}
             />
           ))}
@@ -391,6 +403,7 @@ export function TableView({
               : `${derived.length} of ${table.records.length} records`}
           </span>
         )}
+        <ViewFindControl find={find} />
       </div>
 
       <div
@@ -610,6 +623,7 @@ function TableCell({
   heightInfo,
   width,
   selected,
+  find,
   onSelect
 }: {
   projectId: string
@@ -619,16 +633,24 @@ function TableCell({
   heightInfo: RowHeightInfo
   width: number
   selected: boolean
+  find: ViewFindController
   onSelect: () => void
 }): React.JSX.Element {
   const value = record.values[field.id]
+  const findState = getFindCellState(find, record.id, field.id)
   const setValue = (next: unknown): void =>
     update((p) => ops.setRecordValue(p, record.id, field.id, next))
 
   return (
     <td
       style={{ width, minWidth: width, maxWidth: width }}
-      className={cn(heightInfo.rowClass, 'border-b border-r p-0')}
+      data-find-active={findState.active ? 'true' : undefined}
+      className={cn(
+        heightInfo.rowClass,
+        'border-b border-r p-0',
+        findState.matched && 'bg-find-match-background',
+        findState.active && 'ring-4 ring-inset ring-find-highlight'
+      )}
     >
       <CellContent
         projectId={projectId}

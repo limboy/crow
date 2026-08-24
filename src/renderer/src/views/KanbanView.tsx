@@ -18,6 +18,12 @@ import { ChoiceBadge } from '@/components/ChoiceBadge'
 import { ValueDisplay } from '@/components/ValueDisplay'
 import { FieldDialog } from '@/components/FieldDialog'
 import { FieldsPopover } from '@/components/toolbar/FieldsPopover'
+import {
+  getFindCellState,
+  useViewFind,
+  ViewFindControl,
+  type ViewFindController
+} from '@/components/ViewFind'
 import { FilterPopover } from '@/components/toolbar/FilterPopover'
 import { GroupSelect } from '@/components/toolbar/GroupSelect'
 import { ImageFieldSelect } from '@/components/toolbar/ImageFieldSelect'
@@ -76,6 +82,26 @@ export function KanbanView({
     (f) =>
       !config.hiddenFieldIds.includes(f.id) && f.id !== groupField?.id && f.id !== imageField?.id
   )
+  const findFields = table.fields.filter(
+    (field) =>
+      field.id === table.fields[0]?.id ||
+      cardFields.some((candidate) => candidate.id === field.id)
+  )
+
+  // Sorting before grouping is what orders the cards inside each column,
+  // since groupRecords keeps the order it's handed.
+  const derived = applySorts(
+    applyFilters(table.records, config.filters, table.fields),
+    config.sorts,
+    table.fields,
+    tables
+  )
+  const groups = groupField ? groupRecords(derived, groupField) : []
+  const find = useViewFind(
+    groups.flatMap((group) => group.records),
+    findFields,
+    tables
+  )
 
   const handleDragStart = (event: DragStartEvent): void => {
     setActiveRecordId(String(event.active.id))
@@ -99,6 +125,7 @@ export function KanbanView({
           selectFields={selectFields}
           imageFields={imageFields}
           patchConfig={patchConfig}
+          find={find}
         />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
           <SquareKanban className="size-8 text-muted-foreground/50" />
@@ -144,15 +171,6 @@ export function KanbanView({
     )
   }
 
-  // Sorting before grouping is what orders the cards inside each column,
-  // since groupRecords keeps the order it's handed.
-  const derived = applySorts(
-    applyFilters(table.records, config.filters, table.fields),
-    config.sorts,
-    table.fields,
-    tables
-  )
-  const groups = groupRecords(derived, groupField)
   const activeRecord = derived.find((r) => r.id === activeRecordId)
 
   return (
@@ -163,6 +181,7 @@ export function KanbanView({
         selectFields={selectFields}
         imageFields={imageFields}
         patchConfig={patchConfig}
+        find={find}
       />
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <ScrollArea className="min-h-0 flex-1">
@@ -175,6 +194,7 @@ export function KanbanView({
                 titleField={table.fields[0]}
                 imageField={imageField}
                 aspectRatio={config.imageAspectRatio}
+                find={find}
                 onOpenRecord={onOpenRecord}
                 onAddCard={() =>
                   update((p) =>
@@ -211,49 +231,54 @@ function Toolbar({
   config,
   selectFields,
   imageFields,
-  patchConfig
+  patchConfig,
+  find
 }: {
   table: Table
   config: KanbanViewType['config']
   selectFields: Field[]
   imageFields: Field[]
   patchConfig: (patch: Partial<KanbanViewType['config']>) => void
+  find: ViewFindController
 }): React.JSX.Element {
   return (
-    <div className="flex h-10 shrink-0 items-center gap-1 border-b px-3">
-      <GroupSelect
-        fields={selectFields}
-        value={config.groupByFieldId}
-        onChange={(groupByFieldId) => patchConfig({ groupByFieldId })}
-        label="Group"
-        noneLabel="No grouping"
-      />
-      {imageFields.length > 0 && (
-        <ImageFieldSelect
-          fields={imageFields}
-          value={config.imageFieldId}
-          aspectRatio={config.imageAspectRatio}
-          onFieldChange={(imageFieldId) => patchConfig({ imageFieldId })}
-          onAspectRatioChange={(imageAspectRatio) => patchConfig({ imageAspectRatio })}
+    <>
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b px-3">
+        <GroupSelect
+          fields={selectFields}
+          value={config.groupByFieldId}
+          onChange={(groupByFieldId) => patchConfig({ groupByFieldId })}
+          label="Group"
+          noneLabel="No grouping"
         />
-      )}
-      <FieldsPopover
-        fields={table.fields}
-        hiddenFieldIds={config.hiddenFieldIds}
-        onChange={(hiddenFieldIds) => patchConfig({ hiddenFieldIds })}
-        lockedFieldId={table.fields[0]?.id}
-      />
-      <FilterPopover
-        fields={table.fields}
-        filters={config.filters}
-        onChange={(filters) => patchConfig({ filters })}
-      />
-      <SortPopover
-        fields={table.fields}
-        sorts={config.sorts}
-        onChange={(sorts) => patchConfig({ sorts })}
-      />
-    </div>
+        {imageFields.length > 0 && (
+          <ImageFieldSelect
+            fields={imageFields}
+            value={config.imageFieldId}
+            aspectRatio={config.imageAspectRatio}
+            onFieldChange={(imageFieldId) => patchConfig({ imageFieldId })}
+            onAspectRatioChange={(imageAspectRatio) => patchConfig({ imageAspectRatio })}
+          />
+        )}
+        <FieldsPopover
+          fields={table.fields}
+          hiddenFieldIds={config.hiddenFieldIds}
+          onChange={(hiddenFieldIds) => patchConfig({ hiddenFieldIds })}
+          lockedFieldId={table.fields[0]?.id}
+        />
+        <FilterPopover
+          fields={table.fields}
+          filters={config.filters}
+          onChange={(filters) => patchConfig({ filters })}
+        />
+        <SortPopover
+          fields={table.fields}
+          sorts={config.sorts}
+          onChange={(sorts) => patchConfig({ sorts })}
+        />
+        <ViewFindControl find={find} className="ml-auto" />
+      </div>
+    </>
   )
 }
 
@@ -263,6 +288,7 @@ function KanbanColumn({
   titleField,
   imageField,
   aspectRatio,
+  find,
   onOpenRecord,
   onAddCard
 }: {
@@ -271,6 +297,7 @@ function KanbanColumn({
   titleField?: Field
   imageField?: Field
   aspectRatio?: ImageAspectRatio
+  find: ViewFindController
   onOpenRecord: (recordId: string) => void
   onAddCard: () => void
 }): React.JSX.Element {
@@ -301,6 +328,7 @@ function KanbanColumn({
             titleField={titleField}
             imageField={imageField}
             aspectRatio={aspectRatio}
+            find={find}
             onOpen={() => onOpenRecord(record.id)}
           />
         ))}
@@ -322,6 +350,7 @@ function DraggableCard({
   titleField,
   imageField,
   aspectRatio,
+  find,
   onOpen
 }: {
   record: RecordRow
@@ -329,6 +358,7 @@ function DraggableCard({
   titleField?: Field
   imageField?: Field
   aspectRatio?: ImageAspectRatio
+  find: ViewFindController
   onOpen: () => void
 }): React.JSX.Element {
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({ id: record.id })
@@ -341,6 +371,7 @@ function DraggableCard({
         titleField={titleField}
         imageField={imageField}
         aspectRatio={aspectRatio}
+        find={find}
         onClick={onOpen}
       />
     </div>
@@ -353,6 +384,7 @@ function KanbanCard({
   titleField,
   imageField,
   aspectRatio,
+  find,
   onClick,
   className
 }: {
@@ -361,6 +393,7 @@ function KanbanCard({
   titleField?: Field
   imageField?: Field
   aspectRatio?: ImageAspectRatio
+  find?: ViewFindController
   onClick?: () => void
   className?: string
 }): React.JSX.Element {
@@ -371,11 +404,23 @@ function KanbanCard({
   )
   const imageValue = imageField ? record.values[imageField.id] : undefined
   const hasImage = imageField !== undefined && !isEmptyValue(imageField, imageValue)
+  const findStates = find
+    ? [...(titleField ? [titleField] : []), ...detailFields].map((field) =>
+        getFindCellState(find, record.id, field.id)
+      )
+    : []
+  const cardFindState = {
+    matched: findStates.some((state) => state.matched),
+    active: findStates.some((state) => state.active)
+  }
 
   return (
     <div
+      data-find-active={cardFindState.active ? 'true' : undefined}
       className={cn(
         'overflow-hidden rounded-md border bg-card shadow-xs transition-shadow hover:shadow-sm',
+        cardFindState.matched && 'ring-4 ring-find-match',
+        cardFindState.active && 'ring-find-highlight',
         className
       )}
       onClick={onClick}
