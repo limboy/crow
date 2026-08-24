@@ -76,22 +76,20 @@ export function FilterPopover({
             <Plus data-icon="inline-start" />
             Add filter
           </Button>
-          {filters.length > 0 && (
-            <ToggleGroup
-              aria-label="Filter match mode"
-              variant="segmented"
-              size="xs"
-              spacing={0}
-              value={[match]}
-              onValueChange={(value) => {
-                const next = value[0]
-                if (next === 'all' || next === 'any') onMatchChange(next)
-              }}
-            >
-              <ToggleGroupItem value="all">Match all</ToggleGroupItem>
-              <ToggleGroupItem value="any">Match any</ToggleGroupItem>
-            </ToggleGroup>
-          )}
+          <ToggleGroup
+            aria-label="Filter match mode"
+            variant="segmented"
+            size="xs"
+            spacing={0}
+            value={[match]}
+            onValueChange={(value) => {
+              const next = value[0]
+              if (next === 'all' || next === 'any') onMatchChange(next)
+            }}
+          >
+            <ToggleGroupItem value="all">Match all</ToggleGroupItem>
+            <ToggleGroupItem value="any">Match any</ToggleGroupItem>
+          </ToggleGroup>
         </div>
       </PopoverContent>
     </Popover>
