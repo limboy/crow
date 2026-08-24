@@ -121,20 +121,6 @@ export default function ProjectPage(): React.JSX.Element {
     )
   }
 
-  const records = activeTable?.records ?? []
-  // Every view type filters the same way, so the header count only has to
-  // know the active view's rules — not which kind of view it is.
-  const displayedRecords =
-    activeView && activeTable
-      ? applyFilters(
-          records,
-          activeView.config.filters,
-          activeTable.fields,
-          activeView.config.filterMatch
-        )
-      : records
-  const filtered = displayedRecords.length !== records.length
-
   return (
     // Relation cells resolve the records they link to through this — it's the
     // one thing in a view that has to see past its own table.
@@ -149,11 +135,7 @@ export default function ProjectPage(): React.JSX.Element {
             onSelect={setActiveTableId}
             update={updateProject}
           />
-          <span className="ml-auto shrink-0 pl-2 text-xs text-muted-foreground">
-            {displayedRecords.length} record{displayedRecords.length === 1 ? '' : 's'}
-            {filtered ? ` of ${records.length}` : ''}
-          </span>
-          <Separator orientation="vertical" className="mx-1 !h-4" />
+          <Separator orientation="vertical" className="ml-auto mr-1 !h-4" />
           <HistoryButtons history={history} />
         </PageHeader>
 

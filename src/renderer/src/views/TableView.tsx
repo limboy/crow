@@ -505,29 +505,25 @@ export function TableView({
           value={config.rowHeight}
           onChange={(rowHeight) => patchConfig({ rowHeight })}
         />
-        {selectedRowIds.size > 0 ? (
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">
-              {selectedRowIds.size} selected
-            </span>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="h-7 gap-1.5 px-2 text-[13px] font-normal"
-              onClick={() => void deleteSelectedRows()}
-            >
-              <Trash2 className="size-3.5" />
-              Delete
-            </Button>
-          </div>
-        ) : (
-          <span className="ml-auto text-xs text-muted-foreground">
-            {derived.length === table.records.length
-              ? null
-              : `${derived.length} of ${table.records.length} records`}
-          </span>
-        )}
-        <ViewFindControl find={find} />
+        <div className="ml-auto flex items-center gap-2">
+          {selectedRowIds.size > 0 && (
+            <>
+              <span className="text-xs text-muted-foreground">
+                {selectedRowIds.size} selected
+              </span>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-[13px] font-normal"
+                onClick={() => void deleteSelectedRows()}
+              >
+                <Trash2 className="size-3.5" />
+                Delete
+              </Button>
+            </>
+          )}
+          <ViewFindControl find={find} />
+        </div>
       </div>
 
       <div
