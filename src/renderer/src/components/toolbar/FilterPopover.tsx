@@ -1,5 +1,5 @@
 import { ListFilter, Plus, X } from 'lucide-react'
-import type { Field, FilterRule } from '@shared/types'
+import type { Field, FilterMatch, FilterRule } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { fieldTypeInfo, operatorsFor, recordLabel } from '@/lib/fields'
 import { useRelationTable } from '@/lib/relations'
 import { ToolbarButton } from './ToolbarButton'
@@ -19,10 +20,14 @@ const uuid = (): string => crypto.randomUUID()
 export function FilterPopover({
   fields,
   filters,
+  match,
+  onMatchChange,
   onChange
 }: {
   fields: Field[]
   filters: FilterRule[]
+  match: FilterMatch
+  onMatchChange: (match: FilterMatch) => void
   onChange: (filters: FilterRule[]) => void
 }): React.JSX.Element {
   const patchRule = (id: string, patch: Partial<FilterRule>): void => {
@@ -66,10 +71,28 @@ export function FilterPopover({
             ))}
           </div>
         )}
-        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={addRule}>
-          <Plus data-slot="icon" />
-          Add filter
-        </Button>
+        <div className="flex items-center justify-between gap-2">
+          <Button variant="secondary" size="sm" onClick={addRule}>
+            <Plus data-icon="inline-start" />
+            Add filter
+          </Button>
+          {filters.length > 0 && (
+            <ToggleGroup
+              aria-label="Filter match mode"
+              variant="segmented"
+              size="xs"
+              spacing={0}
+              value={[match]}
+              onValueChange={(value) => {
+                const next = value[0]
+                if (next === 'all' || next === 'any') onMatchChange(next)
+              }}
+            >
+              <ToggleGroupItem value="all">Match all</ToggleGroupItem>
+              <ToggleGroupItem value="any">Match any</ToggleGroupItem>
+            </ToggleGroup>
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   )

@@ -1,4 +1,12 @@
-import type { Field, FilterRule, RecordRow, SelectChoice, SortRule, Table } from '@shared/types'
+import type {
+  Field,
+  FilterMatch,
+  FilterRule,
+  RecordRow,
+  SelectChoice,
+  SortRule,
+  Table
+} from '@shared/types'
 import { choiceById, displayValue, isEmptyValue, linkedRecordIds, operatorsFor } from './fields'
 
 function fieldMap(fields: Field[]): Map<string, Field> {
@@ -89,17 +97,29 @@ function matchesRule(record: RecordRow, rule: FilterRule, field: Field): boolean
   }
 }
 
-export function applyFilters(records: RecordRow[], filters: FilterRule[], fields: Field[]): RecordRow[] {
+export function applyFilters(
+  records: RecordRow[],
+  filters: FilterRule[],
+  fields: Field[],
+  match: FilterMatch = 'all'
+): RecordRow[] {
   if (filters.length === 0) return records
   const byId = fieldMap(fields)
   const valid = filters.filter((rule) => {
     const field = byId.get(rule.fieldId)
-    return field !== undefined && operatorsFor(field).some((op) => op.value === rule.operator)
+    if (!field) return false
+    const operator = operatorsFor(field).find((op) => op.value === rule.operator)
+    if (!operator) return false
+    const value = rule.value
+    return !operator.needsValue || (value !== undefined && value !== null && value !== '')
   })
   if (valid.length === 0) return records
-  return records.filter((record) =>
-    valid.every((rule) => matchesRule(record, rule, byId.get(rule.fieldId)!))
-  )
+  const recordMatches = (record: RecordRow): boolean => {
+    const test = (rule: FilterRule): boolean =>
+      matchesRule(record, rule, byId.get(rule.fieldId)!)
+    return match === 'any' ? valid.some(test) : valid.every(test)
+  }
+  return records.filter(recordMatches)
 }
 
 function compareValues(a: RecordRow, b: RecordRow, field: Field, tables: Table[]): number {

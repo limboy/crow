@@ -52,6 +52,9 @@ import { useGridClipboard } from '@/lib/useGridClipboard'
 import { cn } from '@/lib/utils'
 
 type TableViewType = Extract<View, { type: 'table' }>
+type CellAddress = { recordId: string; fieldId: string }
+type CellMove = 'up' | 'down' | 'left' | 'right' | 'next' | 'previous'
+type EditingCell = CellAddress & { seed?: string }
 
 const DEFAULT_COLUMN_WIDTH = 176
 const MIN_COLUMN_WIDTH = 100
@@ -80,9 +83,8 @@ export function TableView({
     null
   )
   const [deleteFieldTarget, setDeleteFieldTarget] = useState<Field | null>(null)
-  const [selectedCell, setSelectedCell] = useState<{ recordId: string; fieldId: string } | null>(
-    null
-  )
+  const [selectedCell, setSelectedCell] = useState<CellAddress | null>(null)
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null)
   const [liveWidth, setLiveWidth] = useState<{ fieldId: string; width: number } | null>(null)
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
   const tableRef = useRef<HTMLTableElement>(null)
@@ -124,7 +126,7 @@ export function TableView({
   const groupField = table.fields.find((f) => f.id === config.groupByFieldId)
 
   const derived = applySorts(
-    applyFilters(table.records, config.filters, table.fields),
+    applyFilters(table.records, config.filters, table.fields, config.filterMatch),
     config.sorts,
     table.fields,
     tables
@@ -132,22 +134,125 @@ export function TableView({
   const groups: RecordGroup[] | null = groupField
     ? groupRecords(derived, groupField, tables).filter((g) => g.records.length > 0)
     : null
-  const find = useViewFind(
-    groups ? groups.flatMap((group) => group.records) : derived,
-    visibleFields,
-    tables
-  )
+  const displayedRecords = groups ? groups.flatMap((group) => group.records) : derived
+  const find = useViewFind(displayedRecords, visibleFields, tables)
 
   // ⌘C copies the checked rows, or the selected cell; ⌘V writes a block from
   // any spreadsheet in, starting at the selected cell.
   useGridClipboard({
-    records: derived,
+    records: displayedRecords,
     fields: visibleFields,
     tables,
     selectedCell,
     selectedRowIds,
     update
   })
+
+  const moveCell = (cell: CellAddress, move: CellMove): void => {
+    const rowIndex = displayedRecords.findIndex((record) => record.id === cell.recordId)
+    const columnIndex = visibleFields.findIndex((field) => field.id === cell.fieldId)
+    if (rowIndex < 0 || columnIndex < 0) return
+
+    let nextRow = rowIndex
+    let nextColumn = columnIndex
+    if (move === 'next' || move === 'previous') {
+      const currentIndex = rowIndex * visibleFields.length + columnIndex
+      const nextIndex = currentIndex + (move === 'next' ? 1 : -1)
+      if (nextIndex < 0 || nextIndex >= displayedRecords.length * visibleFields.length) return
+      nextRow = Math.floor(nextIndex / visibleFields.length)
+      nextColumn = nextIndex % visibleFields.length
+    } else {
+      if (move === 'up') nextRow -= 1
+      if (move === 'down') nextRow += 1
+      if (move === 'left') nextColumn -= 1
+      if (move === 'right') nextColumn += 1
+      if (
+        nextRow < 0 ||
+        nextRow >= displayedRecords.length ||
+        nextColumn < 0 ||
+        nextColumn >= visibleFields.length
+      ) {
+        return
+      }
+    }
+
+    setSelectedCell({
+      recordId: displayedRecords[nextRow].id,
+      fieldId: visibleFields[nextColumn].id
+    })
+  }
+
+  const handleGridKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (
+      !selectedCell ||
+      editingCell ||
+      event.nativeEvent.isComposing ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey
+    ) {
+      return
+    }
+
+    const moves: Partial<Record<string, CellMove>> = {
+      ArrowUp: 'up',
+      ArrowDown: 'down',
+      ArrowLeft: 'left',
+      ArrowRight: 'right'
+    }
+    const arrowMove = moves[event.key]
+    if (arrowMove) {
+      event.preventDefault()
+      moveCell(selectedCell, arrowMove)
+      return
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      moveCell(selectedCell, event.shiftKey ? 'previous' : 'next')
+      return
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      moveCell(selectedCell, event.shiftKey ? 'up' : 'down')
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setSelectedCell(null)
+      return
+    }
+
+    const field = visibleFields.find((candidate) => candidate.id === selectedCell.fieldId)
+    const record = displayedRecords.find((candidate) => candidate.id === selectedCell.recordId)
+    if (!field || !record) return
+
+    if (event.key === ' ' && field.type === 'checkbox') {
+      event.preventDefault()
+      update((project) =>
+        ops.setRecordValue(project, record.id, field.id, record.values[field.id] !== true)
+      )
+      return
+    }
+
+    const isTextField = field.type === 'text' || field.type === 'url'
+    const isNumberCharacter = field.type === 'number' && /^[0-9eE+.-]$/.test(event.key)
+    if (event.key.length === 1 && (isTextField || isNumberCharacter)) {
+      event.preventDefault()
+      setEditingCell({ ...selectedCell, seed: event.key })
+    }
+  }
+
+  // A filter, hidden-field change, or remote deletion can remove the active
+  // cell. Do not leave keyboard navigation pointing at an invisible address.
+  useEffect(() => {
+    if (!selectedCell) return
+    const recordIsVisible = displayedRecords.some((record) => record.id === selectedCell.recordId)
+    const fieldIsVisible = visibleFields.some((field) => field.id === selectedCell.fieldId)
+    if (!recordIsVisible || !fieldIsVisible) {
+      setSelectedCell(null)
+      setEditingCell(null)
+    }
+  }, [displayedRecords, selectedCell, visibleFields])
 
   const selectedVisibleCount = derived.reduce(
     (count, r) => (selectedRowIds.has(r.id) ? count + 1 : count),
@@ -345,8 +450,25 @@ export function TableView({
               selected={
                 selectedCell?.recordId === record.id && selectedCell?.fieldId === field.id
               }
+              editing={
+                editingCell?.recordId === record.id && editingCell?.fieldId === field.id
+              }
+              editSeed={
+                editingCell?.recordId === record.id && editingCell?.fieldId === field.id
+                  ? editingCell.seed
+                  : undefined
+              }
               find={find}
               onSelect={() => setSelectedCell({ recordId: record.id, fieldId: field.id })}
+              onEdit={(seed) => {
+                setSelectedCell({ recordId: record.id, fieldId: field.id })
+                setEditingCell({ recordId: record.id, fieldId: field.id, seed })
+              }}
+              onCommit={(move) => {
+                setEditingCell(null)
+                if (move) moveCell({ recordId: record.id, fieldId: field.id }, move)
+              }}
+              onCancel={() => setEditingCell(null)}
             />
           ))}
           <td />
@@ -365,6 +487,8 @@ export function TableView({
         <FilterPopover
           fields={table.fields}
           filters={config.filters}
+          match={config.filterMatch}
+          onMatchChange={(filterMatch) => patchConfig({ filterMatch })}
           onChange={(filters) => patchConfig({ filters })}
         />
         <SortPopover
@@ -415,6 +539,7 @@ export function TableView({
         onScroll={(e) => {
           if (summaryBarRef.current) summaryBarRef.current.scrollLeft = e.currentTarget.scrollLeft
         }}
+        onKeyDown={handleGridKeyDown}
       >
         <table ref={tableRef} className="min-w-full table-fixed border-separate border-spacing-0 text-sm">
           <thead className="sticky top-0 z-10 bg-background">
@@ -623,8 +748,13 @@ function TableCell({
   heightInfo,
   width,
   selected,
+  editing,
+  editSeed,
   find,
-  onSelect
+  onSelect,
+  onEdit,
+  onCommit,
+  onCancel
 }: {
   projectId: string
   field: Field
@@ -633,16 +763,30 @@ function TableCell({
   heightInfo: RowHeightInfo
   width: number
   selected: boolean
+  editing: boolean
+  editSeed?: string
   find: ViewFindController
   onSelect: () => void
+  onEdit: (seed?: string) => void
+  onCommit: (move?: CellMove) => void
+  onCancel: () => void
 }): React.JSX.Element {
   const value = record.values[field.id]
   const findState = getFindCellState(find, record.id, field.id)
+  const cellRef = useRef<HTMLTableCellElement>(null)
   const setValue = (next: unknown): void =>
     update((p) => ops.setRecordValue(p, record.id, field.id, next))
 
+  useEffect(() => {
+    if (!selected || editing) return
+    const control = cellRef.current?.querySelector<HTMLElement>('[data-grid-cell-control]')
+    control?.focus({ preventScroll: true })
+    cellRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [editing, selected])
+
   return (
     <td
+      ref={cellRef}
       style={{ width, minWidth: width, maxWidth: width }}
       data-find-active={findState.active ? 'true' : undefined}
       className={cn(
@@ -659,7 +803,12 @@ function TableCell({
         onChange={setValue}
         lineClamp={heightInfo.lineClamp}
         selected={selected}
+        editing={editing}
+        editSeed={editSeed}
         onSelect={onSelect}
+        onEdit={onEdit}
+        onCommit={onCommit}
+        onCancel={onCancel}
       />
     </td>
   )
@@ -672,7 +821,12 @@ function CellContent({
   onChange,
   lineClamp,
   selected,
-  onSelect
+  editing,
+  editSeed,
+  onSelect,
+  onEdit,
+  onCommit,
+  onCancel
 }: {
   projectId: string
   field: Field
@@ -680,20 +834,43 @@ function CellContent({
   onChange: (value: unknown) => void
   lineClamp: number
   selected: boolean
+  editing: boolean
+  editSeed?: string
   onSelect: () => void
+  onEdit: (seed?: string) => void
+  onCommit: (move?: CellMove) => void
+  onCancel: () => void
 }): React.JSX.Element {
-  const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const wrap = lineClamp > 1
   const anchorRef = useRef<HTMLDivElement>(null)
+  const editFinishedRef = useRef(false)
   const isFileField = field.type === 'image' || field.type === 'audio'
   const fileDrop = useFileDrop(field.type === 'audio' ? 'audio' : 'image', projectId, onChange)
 
+  useEffect(() => {
+    if (!editing || !['text', 'number', 'url'].includes(field.type)) return
+    editFinishedRef.current = false
+    setDraft(
+      editSeed ??
+        (typeof value === 'string' ? value : typeof value === 'number' ? String(value) : '')
+    )
+  }, [editSeed, editing, field.type, value])
+
   if (field.type === 'checkbox') {
     return (
-      <div className={cn('flex h-full px-2', wrap ? 'items-start pt-1.5' : 'items-center')}>
+      <div
+        className={cn(
+          'flex h-full px-2',
+          wrap ? 'items-start pt-1.5' : 'items-center',
+          selected && 'ring-2 ring-inset ring-ring'
+        )}
+      >
         <Checkbox
+          data-grid-cell-control
+          tabIndex={selected ? 0 : -1}
           checked={value === true}
+          onClick={onSelect}
           onCheckedChange={(checked) => onChange(checked === true)}
         />
       </div>
@@ -710,11 +887,12 @@ function CellContent({
     field.type === 'relation'
   ) {
     return (
-      <Popover open={editing} onOpenChange={setEditing}>
+      <Popover open={editing} onOpenChange={(open) => (open ? onEdit() : onCancel())}>
         <div
           ref={anchorRef}
+          data-grid-cell-control
           role="button"
-          tabIndex={0}
+          tabIndex={selected ? 0 : -1}
           className={cn(
             'flex h-full w-full cursor-default overflow-hidden px-2 text-left',
             wrap ? 'flex-wrap content-start items-start gap-1 py-1.5' : 'items-center',
@@ -722,13 +900,7 @@ function CellContent({
             isFileField && fileDrop.isOver && 'bg-accent ring-2 ring-inset ring-primary'
           )}
           onClick={onSelect}
-          onDoubleClick={() => setEditing(true)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              onSelect()
-            }
-          }}
+          onDoubleClick={() => onEdit()}
           {...(isFileField
             ? {
                 onDragOver: fileDrop.onDragOver,
@@ -753,7 +925,7 @@ function CellContent({
           anchor={anchorRef}
         >
           {field.type === 'date' ? (
-            <DateEditor value={value} onChange={onChange} onDone={() => setEditing(false)} />
+            <DateEditor value={value} onChange={onChange} onDone={() => onCommit()} />
           ) : field.type === 'image' ? (
             <ImageEditor projectId={projectId} value={value} onChange={onChange} />
           ) : field.type === 'audio' ? (
@@ -763,7 +935,7 @@ function CellContent({
               field={field}
               value={value}
               onChange={onChange}
-              onDone={() => setEditing(false)}
+              onDone={() => onCommit()}
             />
           ) : (
             <SelectEditor
@@ -771,7 +943,7 @@ function CellContent({
               value={value}
               multi={field.type === 'multiSelect'}
               onChange={onChange}
-              onDone={() => setEditing(false)}
+              onDone={() => onCommit()}
             />
           )}
         </PopoverContent>
@@ -781,13 +953,20 @@ function CellContent({
 
   // Inline text-style editing for text / number / url.
   if (editing) {
-    const commit = (): void => {
-      setEditing(false)
+    const commit = (move?: CellMove): void => {
+      if (editFinishedRef.current) return
+      editFinishedRef.current = true
       if (field.type === 'number') {
-        onChange(draft.trim() === '' ? undefined : Number(draft))
+        const parsed = Number(draft)
+        onChange(draft.trim() === '' || Number.isNaN(parsed) ? undefined : parsed)
       } else {
         onChange(draft)
       }
+      onCommit(move)
+    }
+    const cancel = (): void => {
+      editFinishedRef.current = true
+      onCancel()
     }
     if (field.type === 'text' && wrap) {
       return (
@@ -796,13 +975,21 @@ function CellContent({
           className="h-full w-full resize-none bg-background px-2 py-1.5 outline-none ring-1 ring-inset ring-ring"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
+          onBlur={() => commit()}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
-              commit()
+              commit('down')
             }
-            if (e.key === 'Escape') setEditing(false)
+            if (e.key === 'Tab') {
+              e.preventDefault()
+              commit(e.shiftKey ? 'previous' : 'next')
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              e.stopPropagation()
+              cancel()
+            }
           }}
         />
       )
@@ -814,10 +1001,21 @@ function CellContent({
         className="h-full w-full bg-background px-2 outline-none ring-2 ring-inset ring-ring"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
+        onBlur={() => commit()}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') commit()
-          if (e.key === 'Escape') setEditing(false)
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            commit(e.shiftKey ? 'up' : 'down')
+          }
+          if (e.key === 'Tab') {
+            e.preventDefault()
+            commit(e.shiftKey ? 'previous' : 'next')
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            e.stopPropagation()
+            cancel()
+          }
         }}
       />
     )
@@ -825,18 +1023,15 @@ function CellContent({
 
   return (
     <button
+      data-grid-cell-control
+      tabIndex={selected ? 0 : -1}
       className={cn(
         'flex h-full w-full overflow-hidden px-2 text-left',
         wrap ? 'items-start py-1.5' : 'items-center',
         selected && 'ring-2 ring-inset ring-ring'
       )}
       onClick={onSelect}
-      onDoubleClick={() => {
-        setDraft(
-          typeof value === 'string' ? value : typeof value === 'number' ? String(value) : ''
-        )
-        setEditing(true)
-      }}
+      onDoubleClick={() => onEdit()}
     >
       <ValueDisplay field={field} value={value} lineClamp={lineClamp} />
     </button>

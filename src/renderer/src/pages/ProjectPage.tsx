@@ -126,7 +126,12 @@ export default function ProjectPage(): React.JSX.Element {
   // know the active view's rules — not which kind of view it is.
   const displayedRecords =
     activeView && activeTable
-      ? applyFilters(records, activeView.config.filters, activeTable.fields)
+      ? applyFilters(
+          records,
+          activeView.config.filters,
+          activeTable.fields,
+          activeView.config.filterMatch
+        )
       : records
   const filtered = displayedRecords.length !== records.length
 
@@ -501,7 +506,7 @@ function ViewTabs({
   const exportCsv = async (view: View): Promise<void> => {
     const fields = table.fields.filter((f) => !view.config.hiddenFieldIds.includes(f.id))
     const records = applySorts(
-      applyFilters(table.records, view.config.filters, table.fields),
+      applyFilters(table.records, view.config.filters, table.fields, view.config.filterMatch),
       view.config.sorts,
       table.fields,
       tables

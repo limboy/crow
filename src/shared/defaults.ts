@@ -24,12 +24,26 @@ export function newView(type: View['type'], name?: string): View {
       return {
         ...base,
         type,
-        config: { hiddenFieldIds: [], filters: [], sorts: [], rowHeight: 'short' }
+        config: {
+          hiddenFieldIds: [],
+          filters: [],
+          filterMatch: 'all',
+          sorts: [],
+          rowHeight: 'short'
+        }
       }
     case 'kanban':
-      return { ...base, type, config: { hiddenFieldIds: [], filters: [], sorts: [] } }
+      return {
+        ...base,
+        type,
+        config: { hiddenFieldIds: [], filters: [], filterMatch: 'all', sorts: [] }
+      }
     case 'gallery':
-      return { ...base, type, config: { hiddenFieldIds: [], filters: [], sorts: [] } }
+      return {
+        ...base,
+        type,
+        config: { hiddenFieldIds: [], filters: [], filterMatch: 'all', sorts: [] }
+      }
     case 'calendar':
       return {
         ...base,
@@ -38,6 +52,7 @@ export function newView(type: View['type'], name?: string): View {
           dateFieldId: CREATED_AT_DATE_SOURCE,
           hiddenFieldIds: [],
           filters: [],
+          filterMatch: 'all',
           sorts: [],
           mode: 'month'
         }

@@ -92,7 +92,7 @@ export function CalendarView({
   )
 
   const derived = applySorts(
-    applyFilters(table.records, config.filters, table.fields),
+    applyFilters(table.records, config.filters, table.fields, config.filterMatch),
     config.sorts,
     table.fields,
     tables
@@ -167,6 +167,8 @@ export function CalendarView({
         <FilterPopover
           fields={table.fields}
           filters={config.filters}
+          match={config.filterMatch}
+          onMatchChange={(filterMatch) => patchConfig({ filterMatch })}
           onChange={(filters) => patchConfig({ filters })}
         />
         <SortPopover

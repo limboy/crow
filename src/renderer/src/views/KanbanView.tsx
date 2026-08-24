@@ -91,7 +91,7 @@ export function KanbanView({
   // Sorting before grouping is what orders the cards inside each column,
   // since groupRecords keeps the order it's handed.
   const derived = applySorts(
-    applyFilters(table.records, config.filters, table.fields),
+    applyFilters(table.records, config.filters, table.fields, config.filterMatch),
     config.sorts,
     table.fields,
     tables
@@ -269,6 +269,8 @@ function Toolbar({
         <FilterPopover
           fields={table.fields}
           filters={config.filters}
+          match={config.filterMatch}
+          onMatchChange={(filterMatch) => patchConfig({ filterMatch })}
           onChange={(filters) => patchConfig({ filters })}
         />
         <SortPopover

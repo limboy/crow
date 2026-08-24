@@ -37,9 +37,8 @@ function normalizeTable(table: Partial<Table>): Table {
   }
 }
 
-/** Kanban/gallery/calendar views gained filters and sorts after plenty of them
- *  had already been written to disk, so fill in the lists the rest of the app
- *  expects to always be there. */
+/** View rules evolved after plenty of projects had already been written to
+ *  disk, so fill in the filter defaults the rest of the app expects. */
 function normalizeView(view: View): View {
   const config = (view.config ?? {}) as Partial<TableViewConfig>
   return {
@@ -48,6 +47,7 @@ function normalizeView(view: View): View {
       ...config,
       hiddenFieldIds: Array.isArray(config.hiddenFieldIds) ? config.hiddenFieldIds : [],
       filters: Array.isArray(config.filters) ? config.filters : [],
+      filterMatch: config.filterMatch === 'any' ? 'any' : 'all',
       sorts: Array.isArray(config.sorts) ? config.sorts : []
     }
   } as View

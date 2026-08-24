@@ -76,6 +76,8 @@ export interface FilterRule {
   value?: unknown
 }
 
+export type FilterMatch = 'all' | 'any'
+
 export interface SortRule {
   fieldId: string
   direction: 'asc' | 'desc'
@@ -108,6 +110,7 @@ export type SummaryKey =
  *  before laying its records out. */
 export interface ViewRules {
   filters: FilterRule[]
+  filterMatch: FilterMatch
   sorts: SortRule[]
 }
 
