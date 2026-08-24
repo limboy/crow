@@ -331,15 +331,13 @@ function SidebarRail({
   onPointerDown,
   ...props
 }: React.ComponentProps<"button"> & { side?: "left" | "right" }) {
-  const { toggleSidebar, setWidth, width, state, setIsResizing } = useSidebar()
-  const draggingRef = React.useRef(false)
+  const { setWidth, width, state, setIsResizing } = useSidebar()
 
   const handlePointerDown = React.useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
       onPointerDown?.(event)
       if (event.defaultPrevented || event.button !== 0 || state !== "expanded") return
 
-      draggingRef.current = false
       const startX = event.clientX
       const startWidth = width
       const prevUserSelect = document.body.style.userSelect
@@ -350,7 +348,6 @@ function SidebarRail({
 
       const handlePointerMove = (moveEvent: PointerEvent): void => {
         const delta = moveEvent.clientX - startX
-        if (Math.abs(delta) > 3) draggingRef.current = true
         setWidth(side === "left" ? startWidth + delta : startWidth - delta)
       }
 
@@ -372,24 +369,17 @@ function SidebarRail({
     <button
       data-sidebar="rail"
       data-slot="sidebar-rail"
-      aria-label="Toggle Sidebar"
+      aria-label="Resize Sidebar"
       tabIndex={-1}
       onPointerDown={handlePointerDown}
-      onClick={() => {
-        if (draggingRef.current) {
-          draggingRef.current = false
-          return
-        }
-        toggleSidebar()
-      }}
-      title="Toggle Sidebar"
+      title="Resize Sidebar"
       className={cn(
+        // Drag-to-resize only: showing/hiding the sidebar is the header
+        // trigger's job (and the keyboard shortcut's), so the rail hides
+        // along with the sidebar rather than sitting there doing nothing.
         "absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
         "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
-        "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
-        "group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full hover:group-data-[collapsible=offcanvas]:bg-sidebar",
-        "[[data-side=left][data-collapsible=offcanvas]_&]:-right-2",
-        "[[data-side=right][data-collapsible=offcanvas]_&]:-left-2",
+        "group-data-[state=collapsed]:hidden",
         className
       )}
       {...props}
