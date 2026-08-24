@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  addDays,
   addMonths,
   addWeeks,
   eachDayOfInterval,
@@ -11,6 +12,7 @@ import {
   isSameMonth,
   startOfMonth,
   startOfWeek,
+  subDays,
   subMonths,
   subWeeks
 } from 'date-fns'
@@ -24,7 +26,11 @@ import {
   type View
 } from '@shared/types'
 import { Button } from '@/components/ui/button'
-import { DropdownMenuCheckboxItem } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenuCheckboxItem,
+  DropdownMenuItem,
+  DropdownMenuSeparator
+} from '@/components/ui/dropdown-menu'
 import {
   Popover,
   PopoverContent,
@@ -122,15 +128,28 @@ export function CalendarView({
   }
 
   const changeMode = (next: string): void => {
-    if (next === 'month' || next === 'week') patchConfig({ mode: next })
+    if (next === 'month' || next === 'week' || next === 'day') patchConfig({ mode: next })
   }
 
   const moveBackward = (): void => {
-    setAnchorDate((current) => (mode === 'month' ? subMonths(current, 1) : subWeeks(current, 1)))
+    setAnchorDate((current) => {
+      if (mode === 'month') return subMonths(current, 1)
+      if (mode === 'week') return subWeeks(current, 1)
+      return subDays(current, 1)
+    })
   }
 
   const moveForward = (): void => {
-    setAnchorDate((current) => (mode === 'month' ? addMonths(current, 1) : addWeeks(current, 1)))
+    setAnchorDate((current) => {
+      if (mode === 'month') return addMonths(current, 1)
+      if (mode === 'week') return addWeeks(current, 1)
+      return addDays(current, 1)
+    })
+  }
+
+  const openDay = (day: Date): void => {
+    setAnchorDate(day)
+    patchConfig({ mode: 'day' })
   }
 
   return (
@@ -141,23 +160,26 @@ export function CalendarView({
           value={dateSource.id}
           onChange={(dateFieldId) => patchConfig({ dateFieldId })}
           label="Date"
-          icon={CalendarDays}
-          allowNone={false}
-        >
-          <DropdownMenuCheckboxItem
-            checked={showHours}
-            onCheckedChange={(checked) => patchConfig({ showHours: checked === true })}
-          >
-            Show hours
-          </DropdownMenuCheckboxItem>
-        </GroupSelect>
-        {dateFields.length === 0 && (
-          <Button variant="ghost" size="xs" onClick={() => setAddFieldOpen(true)}>
-            <Plus data-icon="inline-start" />
+      icon={CalendarDays}
+      allowNone={false}
+    >
+      {dateFields.length === 0 && (
+        <>
+          <DropdownMenuItem onClick={() => setAddFieldOpen(true)}>
+            <Plus />
             Add date field
-          </Button>
-        )}
-        {mode === 'week' && !showHours && imageFields.length > 0 && (
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+        </>
+      )}
+      <DropdownMenuCheckboxItem
+        checked={showHours}
+        onCheckedChange={(checked) => patchConfig({ showHours: checked === true })}
+      >
+        Show hours
+      </DropdownMenuCheckboxItem>
+    </GroupSelect>
+        {mode !== 'month' && !showHours && imageFields.length > 0 && (
           <ImageFieldSelect
             fields={imageFields}
             value={config.imageFieldId}
@@ -166,7 +188,7 @@ export function CalendarView({
             onAspectRatioChange={(imageAspectRatio) => patchConfig({ imageAspectRatio })}
           />
         )}
-        {mode === 'week' && (
+        {mode !== 'month' && (
           <FieldsPopover
             fields={table.fields}
             hiddenFieldIds={config.hiddenFieldIds}
@@ -188,10 +210,17 @@ export function CalendarView({
         />
 
         <div className="ml-auto flex items-center gap-2">
+          <div className="flex items-center">
+            <span className="text-sm tracking-tight">
+              {formatRangeTitle(anchorDate, mode)}
+            </span>
+          </div>
+
           <Tabs value={mode} onValueChange={changeMode}>
             <TabsList aria-label="Calendar range">
               <TabsTrigger value="month">Month</TabsTrigger>
               <TabsTrigger value="week">Week</TabsTrigger>
+              <TabsTrigger value="day">Day</TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -216,11 +245,6 @@ export function CalendarView({
               <ChevronRight />
             </Button>
           </div>
-          <div className="flex min-w-40 items-center justify-end gap-2">
-            <span className="text-right text-sm font-semibold tracking-tight">
-              {formatRangeTitle(anchorDate, mode)}
-            </span>
-          </div>
         </div>
       </div>
 
@@ -235,6 +259,7 @@ export function CalendarView({
         imageField={imageField}
         aspectRatio={config.imageAspectRatio}
         onOpenRecord={onOpenRecord}
+        onOpenDay={openDay}
         onAddRecord={canAddOnDay ? addRecordOn : undefined}
       />
 
@@ -270,6 +295,7 @@ function CalendarGrid({
   imageField,
   aspectRatio,
   onOpenRecord,
+  onOpenDay,
   onAddRecord
 }: {
   anchorDate: Date
@@ -282,19 +308,25 @@ function CalendarGrid({
   imageField?: Field
   aspectRatio?: ImageAspectRatio
   onOpenRecord: (recordId: string) => void
+  onOpenDay: (day: Date) => void
   onAddRecord?: (day: Date, timed?: boolean) => void
 }): React.JSX.Element {
   const month = startOfMonth(anchorDate)
-  const range =
-    mode === 'month'
-      ? {
-          start: startOfWeek(month, WEEK_STARTS_ON),
-          end: endOfWeek(endOfMonth(month), WEEK_STARTS_ON)
-        }
-      : {
-          start: startOfWeek(anchorDate, WEEK_STARTS_ON),
-          end: endOfWeek(anchorDate, WEEK_STARTS_ON)
-        }
+  const range = (() => {
+    if (mode === 'month') {
+      return {
+        start: startOfWeek(month, WEEK_STARTS_ON),
+        end: endOfWeek(endOfMonth(month), WEEK_STARTS_ON)
+      }
+    }
+    if (mode === 'week') {
+      return {
+        start: startOfWeek(anchorDate, WEEK_STARTS_ON),
+        end: endOfWeek(anchorDate, WEEK_STARTS_ON)
+      }
+    }
+    return { start: anchorDate, end: anchorDate }
+  })()
   const days = eachDayOfInterval(range)
   const recordsByDay = new Map<string, CalendarRecord[]>()
 
@@ -310,14 +342,15 @@ function CalendarGrid({
     recordsByDay.set(parts.date, records)
   }
 
-  if (mode === 'week' && showHours) {
+  if (mode !== 'month' && showHours) {
     return (
-      <WeekAgenda
+      <HourAgenda
         days={days}
         recordsByDay={recordsByDay}
         titleField={titleField}
         cardFields={cardFields}
         onOpenRecord={onOpenRecord}
+        onOpenDay={mode === 'week' ? onOpenDay : undefined}
         onAddRecord={onAddRecord}
       />
     )
@@ -327,13 +360,14 @@ function CalendarGrid({
     <CalendarDayGrid
       days={days}
       month={month}
-      compactWeek={mode === 'week'}
+      compactRange={mode !== 'month'}
       recordsByDay={recordsByDay}
       titleField={titleField}
       cardFields={cardFields}
       imageField={imageField}
       aspectRatio={aspectRatio}
       onOpenRecord={onOpenRecord}
+      onOpenDay={mode === 'day' ? undefined : onOpenDay}
       onAddRecord={onAddRecord}
     />
   )
@@ -347,53 +381,96 @@ interface CalendarRecord {
 function CalendarDayGrid({
   days,
   month,
-  compactWeek,
+  compactRange,
   recordsByDay,
   titleField,
   cardFields,
   imageField,
   aspectRatio,
   onOpenRecord,
+  onOpenDay,
   onAddRecord
 }: {
   days: Date[]
   month: Date
-  compactWeek: boolean
+  compactRange: boolean
   recordsByDay: Map<string, CalendarRecord[]>
   titleField?: Field
   cardFields: Field[]
   imageField?: Field
   aspectRatio?: ImageAspectRatio
   onOpenRecord: (recordId: string) => void
+  onOpenDay?: (day: Date) => void
   onAddRecord?: (day: Date, timed?: boolean) => void
 }): React.JSX.Element {
-  const rowCount = days.length / 7
+  const columnCount = days.length === 1 ? 1 : 7
+  const rowCount = compactRange ? 1 : days.length / columnCount
   const gridRef = useRef<HTMLDivElement>(null)
   const visibleEventCapacity = useVisibleEventCapacity(gridRef, rowCount)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="grid h-8 shrink-0 grid-cols-7 border-b bg-muted/30">
-        {WEEKDAYS.map((weekday) => (
-          <div
-            key={weekday}
-            className="flex items-center justify-center border-r text-[11px] font-medium text-muted-foreground last:border-r-0"
-          >
-            {weekday}
-          </div>
-        ))}
-      </div>
+      {days.length > 1 && (
+        <div
+          className="grid h-8 shrink-0 border-b bg-muted/30"
+          style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}
+        >
+          {compactRange
+            ? days.map((day) => {
+                const today = isSameDay(day, new Date())
+                return (
+                  <div
+                    key={format(day, 'yyyy-MM-dd')}
+                    className="flex items-center justify-center gap-1 border-r text-[11px] font-medium text-muted-foreground last:border-r-0"
+                  >
+                    <span>{format(day, 'EEE')}</span>
+                    {onOpenDay ? (
+                      <Button
+                        type="button"
+                        variant={today ? 'default' : 'ghost'}
+                        size="xs"
+                        aria-label={`Open ${format(day, 'MMMM d, yyyy')} in Day view`}
+                        onClick={() => onOpenDay(day)}
+                      >
+                        {format(day, 'd')}
+                      </Button>
+                    ) : (
+                      <span
+                        className={cn(
+                          'flex size-7 items-center justify-center rounded-md text-xs tabular-nums',
+                          today && 'bg-primary font-semibold text-primary-foreground'
+                        )}
+                      >
+                        {format(day, 'd')}
+                      </span>
+                    )}
+                  </div>
+                )
+              })
+            : WEEKDAYS.map((weekday) => (
+                <div
+                  key={weekday}
+                  className="flex items-center justify-center border-r text-[11px] font-medium text-muted-foreground last:border-r-0"
+                >
+                  {weekday}
+                </div>
+              ))}
+        </div>
+      )}
       <div
         ref={gridRef}
-        className="grid min-h-0 flex-1 grid-cols-7"
-        style={{ gridTemplateRows: `repeat(${rowCount}, minmax(0, 1fr))` }}
+        className="grid min-h-0 flex-1"
+        style={{
+          gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+          gridTemplateRows: `repeat(${rowCount}, minmax(0, 1fr))`
+        }}
       >
         {days.map((day) => {
           const dateKey = format(day, 'yyyy-MM-dd')
           const records = recordsByDay.get(dateKey) ?? []
           const today = isSameDay(day, new Date())
-          const inMonth = compactWeek || isSameMonth(day, month)
-          const hasMore = !compactWeek && records.length > visibleEventCapacity
+          const inMonth = compactRange || isSameMonth(day, month)
+          const hasMore = !compactRange && records.length > visibleEventCapacity
           const visibleRecords = hasMore
             ? records.slice(0, Math.max(0, visibleEventCapacity - 1))
             : records
@@ -406,32 +483,52 @@ function CalendarDayGrid({
                 !inMonth && 'bg-muted/20'
               )}
             >
-              <div className="mb-1 flex h-6 shrink-0 items-center justify-between">
-                <span
+              {(!compactRange || onAddRecord) && (
+                <div
                   className={cn(
-                    'flex size-6 items-center justify-center rounded-full text-xs tabular-nums',
-                    !inMonth && 'text-muted-foreground/60',
-                    today && 'bg-primary font-semibold text-primary-foreground'
+                    'mb-1 flex h-7 shrink-0 items-center justify-between',
+                    compactRange && 'justify-end'
                   )}
                 >
-                  {format(day, 'd')}
-                </span>
-                {onAddRecord && (
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label={`Add record on ${format(day, 'MMMM d, yyyy')}`}
-                    className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-                    onClick={() => onAddRecord(day)}
-                  >
-                    <Plus />
-                  </Button>
-                )}
-              </div>
+                  {!compactRange &&
+                    (onOpenDay ? (
+                      <Button
+                        type="button"
+                        variant={today ? 'default' : 'ghost'}
+                        size="icon-xs"
+                        aria-label={`Open ${format(day, 'MMMM d, yyyy')} in Day view`}
+                        className={cn(!inMonth && 'text-muted-foreground/60')}
+                        onClick={() => onOpenDay(day)}
+                      >
+                        {format(day, 'd')}
+                      </Button>
+                    ) : (
+                      <span
+                        className={cn(
+                          'flex size-7 items-center justify-center rounded-md text-xs tabular-nums',
+                          today && 'bg-primary font-semibold text-primary-foreground'
+                        )}
+                      >
+                        {format(day, 'd')}
+                      </span>
+                    ))}
+                  {onAddRecord && (
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={`Add record on ${format(day, 'MMMM d, yyyy')}`}
+                      className="opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
+                      onClick={() => onAddRecord(day)}
+                    >
+                      <Plus />
+                    </Button>
+                  )}
+                </div>
+              )}
               <div
                 className={cn(
                   'flex min-h-0 flex-col gap-1',
-                  compactWeek ? 'overflow-y-auto' : 'overflow-hidden'
+                  compactRange ? 'overflow-y-auto' : 'overflow-hidden'
                 )}
               >
                 {visibleRecords.map((record) => (
@@ -440,8 +537,8 @@ function CalendarDayGrid({
                     record={record.record}
                     time={record.time}
                     titleField={titleField}
-                    cardFields={compactWeek ? cardFields : undefined}
-                    imageField={compactWeek ? imageField : undefined}
+                    cardFields={compactRange ? cardFields : undefined}
+                    imageField={compactRange ? imageField : undefined}
                     aspectRatio={aspectRatio}
                     onOpenRecord={onOpenRecord}
                   />
@@ -467,12 +564,13 @@ function CalendarDayGrid({
 const HOUR_HEIGHT = 64
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour)
 
-function WeekAgenda({
+function HourAgenda({
   days,
   recordsByDay,
   titleField,
   cardFields,
   onOpenRecord,
+  onOpenDay,
   onAddRecord
 }: {
   days: Date[]
@@ -480,9 +578,11 @@ function WeekAgenda({
   titleField?: Field
   cardFields: Field[]
   onOpenRecord: (recordId: string) => void
+  onOpenDay?: (day: Date) => void
   onAddRecord?: (day: Date, timed?: boolean) => void
 }): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const gridTemplateColumns = `3.5rem repeat(${days.length}, minmax(0, 1fr))`
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = HOUR_HEIGHT * 7.5
@@ -490,23 +590,40 @@ function WeekAgenda({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="grid shrink-0 grid-cols-[3.5rem_repeat(7,minmax(0,1fr))] border-b bg-muted/30">
-        <div />
-        {days.map((day) => {
-          const today = isSameDay(day, new Date())
-          return (
-            <div
-              key={format(day, 'yyyy-MM-dd')}
-              className="flex h-12 items-center justify-center border-l"
-            >
-              <span className={cn('text-xs font-medium', today && 'text-primary')}>
-                {format(day, 'EEE d')}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-      <div className="grid shrink-0 grid-cols-[3.5rem_repeat(7,minmax(0,1fr))] border-b">
+      {days.length > 1 && (
+        <div
+          className="grid shrink-0 border-b bg-muted/30"
+          style={{ gridTemplateColumns }}
+        >
+          <div />
+          {days.map((day) => {
+            const today = isSameDay(day, new Date())
+            return (
+              <div
+                key={format(day, 'yyyy-MM-dd')}
+                className="flex h-12 items-center justify-center border-l"
+              >
+                {onOpenDay ? (
+                  <Button
+                    type="button"
+                    variant={today ? 'secondary' : 'ghost'}
+                    size="xs"
+                    aria-label={`Open ${format(day, 'MMMM d, yyyy')} in Day view`}
+                    onClick={() => onOpenDay(day)}
+                  >
+                    {format(day, 'EEE d')}
+                  </Button>
+                ) : (
+                  <span className={cn('text-xs font-medium', today && 'text-primary')}>
+                    {format(day, 'EEE d')}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+      <div className="grid shrink-0 border-b" style={{ gridTemplateColumns }}>
         <div className="flex items-center justify-end pr-2 text-[10px] text-muted-foreground">
           All day
         </div>
@@ -540,11 +657,11 @@ function WeekAgenda({
       </div>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         <div
-          className="grid grid-cols-[3.5rem_repeat(7,minmax(0,1fr))]"
-          style={{ height: HOUR_HEIGHT * 24 }}
+          className="grid"
+          style={{ height: HOUR_HEIGHT * 24, gridTemplateColumns }}
         >
           <div className="relative">
-            {HOURS.map((hour) => (
+            {HOURS.slice(1).map((hour) => (
               <span
                 key={hour}
                 className="absolute right-2 -translate-y-1/2 text-[10px] tabular-nums text-muted-foreground"
@@ -609,7 +726,7 @@ function WeekDayColumn({
       onMouseMove={updateHoveredHour}
       onMouseLeave={() => setHoveredHour(undefined)}
     >
-      {HOURS.map((hour) => (
+      {HOURS.slice(1).map((hour) => (
         <div
           key={hour}
           aria-hidden="true"
@@ -928,6 +1045,7 @@ function useVisibleEventCapacity(
 
 function formatRangeTitle(anchorDate: Date, mode: CalendarMode): string {
   if (mode === 'month') return format(anchorDate, 'MMMM yyyy')
+  if (mode === 'day') return format(anchorDate, 'EEEE, MMMM d, yyyy')
 
   const start = startOfWeek(anchorDate, WEEK_STARTS_ON)
   const end = endOfWeek(anchorDate, WEEK_STARTS_ON)

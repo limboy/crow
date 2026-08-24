@@ -253,8 +253,8 @@ it. A table with no views opens on an empty state, so include at least one. Each
 | `summaries` | table | `{ "<fieldId>": "sum" }` — the statistic that field's cell shows in the bottom bar. Any field takes `none` (the default), `empty`, `filled`, `unique`, `percentEmpty`, `percentFilled`, `percentUnique`; `number` fields also take `sum`, `average`, `median`, `min`, `max`, `range`, and `date` fields `earliest`, `latest`, `dateRange`. A summary that doesn't apply to the field's type shows nothing. |
 | `coverFieldId` | gallery | An `image` field id. |
 | `dateFieldId` | calendar | A `date` field id, or the sentinel `"__createdAt__"` to place records by their creation time. |
-| `mode` | calendar | `month` (default) or `week`. |
-| `showHours` | calendar | In Week mode, `true` (default) uses an hourly agenda: date-only records appear in its all-day row and timed records are placed at their local start time. `false` uses a compact list inside each day. |
+| `mode` | calendar | `month` (default), `week`, or `day`. |
+| `showHours` | calendar | In Week and Day modes, `true` (default) uses an hourly agenda: date-only records appear in its all-day row and timed records are placed at their local start time. `false` uses a compact list inside each day. |
 
 ## `assets`
 

@@ -146,7 +146,7 @@ export interface GalleryViewConfig extends ViewRules {
 export interface CalendarViewConfig extends ViewRules {
   dateFieldId?: string
   hiddenFieldIds: string[]
-  mode?: 'month' | 'week'
+  mode?: 'month' | 'week' | 'day'
   /** Use the hourly agenda in Week mode; false uses the compact per-day list. */
   showHours?: boolean
   imageFieldId?: string
