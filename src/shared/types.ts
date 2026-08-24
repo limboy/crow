@@ -83,6 +83,27 @@ export interface SortRule {
 
 export type RowHeight = 'short' | 'medium' | 'tall'
 
+/** A column footer statistic. Every field type offers the counting ones;
+ *  `sum`…`range` are number-only and `earliest`…`dateRange` date-only
+ *  (see `summaryOptions`). */
+export type SummaryKey =
+  | 'none'
+  | 'empty'
+  | 'filled'
+  | 'unique'
+  | 'percentEmpty'
+  | 'percentFilled'
+  | 'percentUnique'
+  | 'sum'
+  | 'average'
+  | 'median'
+  | 'min'
+  | 'max'
+  | 'range'
+  | 'earliest'
+  | 'latest'
+  | 'dateRange'
+
 /** Record selection and ordering, which every view type applies the same way
  *  before laying its records out. */
 export interface ViewRules {
@@ -96,6 +117,8 @@ export interface TableViewConfig extends ViewRules {
   rowHeight?: RowHeight
   /** Column width in pixels per field id; unset falls back to the default width. */
   columnWidths?: Record<string, number>
+  /** Summary shown in the bottom bar per field id; unset (or `none`) shows nothing. */
+  summaries?: Record<string, SummaryKey>
 }
 
 /** Aspect ratio (width:height) for a card's featured image, in Kanban,

@@ -24,6 +24,7 @@ import { Popover, PopoverContent } from '@/components/ui/popover'
 import { ChoiceBadge } from '@/components/ChoiceBadge'
 import { ValueDisplay } from '@/components/ValueDisplay'
 import { FieldDialog } from '@/components/FieldDialog'
+import { SummaryBar } from '@/components/SummaryBar'
 import { AudioEditor } from '@/components/editors/AudioEditor'
 import { DateEditor } from '@/components/editors/DateEditor'
 import { ImageEditor } from '@/components/editors/ImageEditor'
@@ -48,6 +49,8 @@ type TableViewType = Extract<View, { type: 'table' }>
 const DEFAULT_COLUMN_WIDTH = 176
 const MIN_COLUMN_WIDTH = 100
 const MAX_COLUMN_WIDTH = 600
+/** Row-number column, in pixels — `w-11`, which the summary bar has to match. */
+const GUTTER_WIDTH = 44
 
 export function TableView({
   projectId,
@@ -76,6 +79,8 @@ export function TableView({
   const [liveWidth, setLiveWidth] = useState<{ fieldId: string; width: number } | null>(null)
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
   const tableRef = useRef<HTMLTableElement>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
+  const summaryBarRef = useRef<HTMLDivElement>(null)
 
   // Drop selections for records that no longer exist (deleted elsewhere, e.g.
   // via the record detail sheet) so stale ids don't linger in the set.
@@ -376,7 +381,16 @@ export function TableView({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div
+        ref={gridRef}
+        className="min-h-0 flex-1 overflow-auto"
+        // The summary bar sits outside this container so it stays pinned to the
+        // bottom; keeping its scroll position in step is what lines its cells up
+        // with the columns.
+        onScroll={(e) => {
+          if (summaryBarRef.current) summaryBarRef.current.scrollLeft = e.currentTarget.scrollLeft
+        }}
+      >
         <table ref={tableRef} className="min-w-full table-fixed border-separate border-spacing-0 text-sm">
           <thead className="sticky top-0 z-10 bg-background">
             <tr>
@@ -490,6 +504,19 @@ export function TableView({
           </tbody>
         </table>
       </div>
+
+      <SummaryBar
+        fields={visibleFields}
+        records={derived}
+        tables={tables}
+        summaries={config.summaries}
+        columnWidth={columnWidth}
+        gutterWidth={GUTTER_WIDTH}
+        onChange={(fieldId, key) =>
+          patchConfig({ summaries: { ...config.summaries, [fieldId]: key } })
+        }
+        scrollRef={summaryBarRef}
+      />
 
       <FieldDialog
         open={fieldDialog !== null}
