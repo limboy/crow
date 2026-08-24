@@ -54,7 +54,8 @@ export function newView(type: View['type'], name?: string): View {
           filters: [],
           filterMatch: 'all',
           sorts: [],
-          mode: 'month'
+          mode: 'month',
+          showHours: true
         }
       }
   }

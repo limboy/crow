@@ -154,6 +154,32 @@ export function isEmptyValue(field: Field, value: unknown): boolean {
   }
 }
 
+/** A date field stores either an all-day local date or a local wall-clock time.
+ *  Keeping both forms ISO-shaped preserves chronological string sorting and
+ *  avoids silently moving an event when the computer's time zone changes. */
+export const DATE_VALUE_PATTERN = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?$/
+
+export function dateValueParts(value: unknown): { date: string; time?: string } | undefined {
+  if (typeof value !== 'string' || !DATE_VALUE_PATTERN.test(value)) return undefined
+  const date = new Date(`${value.slice(0, 10)}T00:00:00`)
+  const year = Number(value.slice(0, 4))
+  const month = Number(value.slice(5, 7))
+  const day = Number(value.slice(8, 10))
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return undefined
+  }
+  if (value.length === 10) return { date: value }
+  const time = value.slice(11)
+  const [hour, minute] = time.split(':').map(Number)
+  if (hour > 23 || minute > 59) return undefined
+  return { date: value.slice(0, 10), time }
+}
+
 /** Plain-text rendering of a value, used for search, sorting and fallbacks.
  *  `tables` only matters for relation fields, whose text lives in another
  *  table; callers without a project in reach can leave it off and get ''. */
@@ -178,9 +204,17 @@ export function displayValue(field: Field, value: unknown, tables: Table[] = [])
     case 'number':
       return String(value)
     case 'date': {
-      const date = new Date(`${String(value)}T00:00:00`)
-      return Number.isNaN(date.getTime())
-        ? String(value)
+      const parts = dateValueParts(value)
+      if (!parts) return String(value)
+      const date = new Date(`${parts.date}T${parts.time ?? '00:00'}:00`)
+      return parts.time
+        ? date.toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+          })
         : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
     }
     default:

@@ -147,6 +147,8 @@ export interface CalendarViewConfig extends ViewRules {
   dateFieldId?: string
   hiddenFieldIds: string[]
   mode?: 'month' | 'week'
+  /** Use the hourly agenda in Week mode; false uses the compact per-day list. */
+  showHours?: boolean
   imageFieldId?: string
   imageAspectRatio?: ImageAspectRatio
 }

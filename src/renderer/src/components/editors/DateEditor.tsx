@@ -1,6 +1,8 @@
 import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
+import { Input } from '@/components/ui/input'
+import { dateValueParts } from '@/lib/fields'
 
 export function DateEditor({
   value,
@@ -11,8 +13,22 @@ export function DateEditor({
   onChange: (value: unknown) => void
   onDone?: () => void
 }): React.JSX.Element {
-  const selected =
-    typeof value === 'string' && value ? new Date(`${value}T00:00:00`) : undefined
+  const parts = dateValueParts(value)
+  const selected = parts ? new Date(`${parts.date}T00:00:00`) : undefined
+
+  const setDate = (date: Date | undefined): void => {
+    if (!date) {
+      onChange(undefined)
+      return
+    }
+    const day = format(date, 'yyyy-MM-dd')
+    onChange(parts?.time ? `${day}T${parts.time}` : day)
+  }
+
+  const setTime = (time: string): void => {
+    if (!parts) return
+    onChange(time ? `${parts.date}T${time}` : parts.date)
+  }
 
   return (
     <div>
@@ -20,26 +36,42 @@ export function DateEditor({
         mode="single"
         selected={selected}
         defaultMonth={selected}
-        onSelect={(date) => {
-          onChange(date ? format(date, 'yyyy-MM-dd') : undefined)
-          onDone?.()
-        }}
+        onSelect={setDate}
       />
-      {selected && (
-        <div className="border-t p-2">
+      <div className="flex items-center gap-2 border-t p-2">
+        <Input
+          type="time"
+          aria-label="Event time"
+          value={parts?.time ?? ''}
+          disabled={!parts}
+          onChange={(event) => setTime(event.target.value)}
+        />
+        {parts?.time && (
           <Button
             variant="ghost"
             size="sm"
-            className="w-full text-muted-foreground"
-            onClick={() => {
-              onChange(undefined)
-              onDone?.()
-            }}
+            className="text-muted-foreground"
+            onClick={() => setTime('')}
           >
-            Clear date
+            All day
           </Button>
-        </div>
-      )}
+        )}
+      </div>
+      <div className="flex items-center justify-between border-t p-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          onClick={() => onChange(undefined)}
+        >
+          Clear
+        </Button>
+        {onDone && (
+          <Button size="sm" onClick={onDone}>
+            Done
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Rows3 } from 'lucide-react'
 import type { Field } from '@shared/types'
 import {
@@ -23,7 +24,8 @@ export function GroupSelect({
   label = 'Group',
   icon = Rows3,
   noneLabel = 'No grouping',
-  allowNone = true
+  allowNone = true,
+  children
 }: {
   fields: Field[]
   value?: string
@@ -32,6 +34,7 @@ export function GroupSelect({
   icon?: typeof Rows3
   noneLabel?: string
   allowNone?: boolean
+  children?: ReactNode
 }): React.JSX.Element {
   const active = fields.find((f) => f.id === value)
 
@@ -78,6 +81,12 @@ export function GroupSelect({
             </>
           )}
         </DropdownMenuRadioGroup>
+        {children && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>{children}</DropdownMenuGroup>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

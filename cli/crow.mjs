@@ -276,13 +276,32 @@ async function coerceValue(field, value, project) {
     }
     case 'date': {
       const str = String(value)
-      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str
+      const local = /^(\d{4}-\d{2}-\d{2})(?:[T\s](\d{1,2}):(\d{2}))?$/.exec(str)
+      if (local) {
+        const parsedDay = new Date(`${local[1]}T00:00:00`)
+        const [year, month, day] = local[1].split('-').map(Number)
+        const validDay =
+          !Number.isNaN(parsedDay.getTime()) &&
+          parsedDay.getFullYear() === year &&
+          parsedDay.getMonth() === month - 1 &&
+          parsedDay.getDate() === day
+        if (validDay) {
+          if (!local[2]) return local[1]
+          const hour = Number(local[2])
+          const minute = Number(local[3])
+          if (hour < 24 && minute < 60) {
+            return `${local[1]}T${String(hour).padStart(2, '0')}:${local[3]}`
+          }
+        }
+      }
       const date = new Date(str)
       if (Number.isNaN(date.getTime())) {
-        fail(`Field "${field.name}" expects a date (YYYY-MM-DD), got ${JSON.stringify(value)}`)
+        fail(`Field "${field.name}" expects a date or local date-time (YYYY-MM-DD[THH:mm]), got ${JSON.stringify(value)}`)
       }
       const pad = (n) => String(n).padStart(2, '0')
-      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+      const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+      const hasTime = /\d:\d|\b(?:am|pm)\b/i.test(str)
+      return hasTime ? `${day}T${pad(date.getHours())}:${pad(date.getMinutes())}` : day
     }
     case 'select':
       return choiceIdFor(field, value)
@@ -737,7 +756,7 @@ VALUE FORMATS (per field type, when writing)
   text, url     string
   number        number (or numeric string)
   checkbox      true / false
-  date          "YYYY-MM-DD"
+  date          "YYYY-MM-DD" (all day) or "YYYY-MM-DDTHH:mm" (local time)
   select        choice name as string — unknown names are created automatically
   multiSelect   array of choice names — unknown names are created automatically
   relation      array of linked records, each a record id (unique prefixes work) or the

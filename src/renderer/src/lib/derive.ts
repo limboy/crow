@@ -69,7 +69,9 @@ function matchesRule(record: RecordRow, rule: FilterRule, field: Field): boolean
       const target_ = String(target)
       switch (rule.operator) {
         case 'is':
-          return value === target_
+          // The filter UI chooses a day. It should include timed events on
+          // that day as well as all-day values.
+          return target_.length === 10 ? value.slice(0, 10) === target_ : value === target_
         case 'gt':
           return value > target_
         case 'lt':

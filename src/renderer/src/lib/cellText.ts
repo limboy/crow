@@ -1,5 +1,13 @@
 import type { Field, SelectChoice, Table } from '@shared/types'
-import { choiceById, choicesByIds, linkedRecords, nextChoiceColor, recordLabel, relationTable } from './fields'
+import {
+  choiceById,
+  choicesByIds,
+  dateValueParts,
+  linkedRecords,
+  nextChoiceColor,
+  recordLabel,
+  relationTable
+} from './fields'
 
 /**
  * Round-trippable text for a cell value, and the parse back the other way.
@@ -34,7 +42,7 @@ export function cellToText(field: Field, value: unknown, tables: Table[] = []): 
         .map((record) => recordLabel(target, record))
         .join(LIST_SEPARATOR)
     }
-    // Dates are stored as `yyyy-MM-dd` already, and image/audio as the url
+    // Dates are stored as `yyyy-MM-dd` / `yyyy-MM-ddTHH:mm` already, and image/audio as the url
     // they resolve through, so both are their own text form.
     default:
       return String(value)
@@ -43,19 +51,30 @@ export function cellToText(field: Field, value: unknown, tables: Table[] = []): 
 
 const pad = (part: string): string => part.padStart(2, '0')
 
-/** `yyyy-MM-dd` / `yyyy/M/d`, the unambiguous forms, matched textually so a
+/** `yyyy-MM-dd` / `yyyy/M/d`, optionally with a time. These unambiguous forms are matched textually so a
  *  timezone west of UTC can't roll them back a day. */
-const ISO_DATE = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s].*)?$/
+const ISO_DATE = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s](\d{1,2}):(\d{2}))?$/
 
 /** What a numeric date looks like in a spreadsheet export, in any order. */
 const NUMERIC_DATE = /^\d{1,4}[-/]\d{1,2}[-/]\d{1,4}(?:[T\s].*)?$/
 
 function parseDate(text: string): string | undefined {
   const iso = ISO_DATE.exec(text)
-  if (iso) return `${iso[1]}-${pad(iso[2])}-${pad(iso[3])}`
+  if (iso) {
+    const date = `${iso[1]}-${pad(iso[2])}-${pad(iso[3])}`
+    if (!iso[4]) return dateValueParts(date) ? date : undefined
+    const hour = Number(iso[4])
+    const minute = Number(iso[5])
+    const value = `${date}T${pad(iso[4])}:${iso[5]}`
+    return hour < 24 && minute < 60 && dateValueParts(value) ? value : undefined
+  }
   const parsed = new Date(text)
   if (Number.isNaN(parsed.getTime())) return undefined
-  return `${parsed.getFullYear()}-${pad(String(parsed.getMonth() + 1))}-${pad(String(parsed.getDate()))}`
+  const date = `${parsed.getFullYear()}-${pad(String(parsed.getMonth() + 1))}-${pad(String(parsed.getDate()))}`
+  const hasTime = /\d:\d|\b(?:am|pm)\b/i.test(text)
+  return hasTime
+    ? `${date}T${pad(String(parsed.getHours()))}:${pad(String(parsed.getMinutes()))}`
+    : date
 }
 
 function parseNumber(text: string): number | undefined {

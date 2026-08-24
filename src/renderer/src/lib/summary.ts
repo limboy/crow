@@ -69,7 +69,7 @@ function numberValues(field: Field, records: RecordRow[]): number[] {
     .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
 }
 
-/** Date cells hold `YYYY-MM-DD`, so plain string order is chronological order. */
+/** Date cells use ISO local date/date-time strings, so plain string order is chronological order. */
 function dateValues(field: Field, records: RecordRow[]): string[] {
   return records
     .map((r) => r.values[field.id])
@@ -78,8 +78,8 @@ function dateValues(field: Field, records: RecordRow[]): string[] {
 }
 
 function daysBetween(from: string, to: string): number | undefined {
-  const start = new Date(`${from}T00:00:00`).getTime()
-  const end = new Date(`${to}T00:00:00`).getTime()
+  const start = new Date(`${from.slice(0, 10)}T00:00:00`).getTime()
+  const end = new Date(`${to.slice(0, 10)}T00:00:00`).getTime()
   if (Number.isNaN(start) || Number.isNaN(end)) return undefined
   return Math.round((end - start) / 86_400_000)
 }

@@ -110,7 +110,7 @@ unique within the table works. Only the **project** id is constrained by the
 | `number` | JSON number (a numeric string is treated as empty) |
 | `select` | the **choice id** (not its name) |
 | `multiSelect` | array of choice ids |
-| `date` | `"YYYY-MM-DD"` string — date only, no time, no timezone |
+| `date` | `"YYYY-MM-DD"` (all day) or `"YYYY-MM-DDTHH:mm"` (local wall-clock time, no timezone) |
 | `checkbox` | `true`; anything else counts as unchecked |
 | `url` | string |
 | `image` | an `app-image:///<projectId>/<file>` url, or any external `http(s)` url |
@@ -237,7 +237,7 @@ it. A table with no views opens on an empty state, so include at least one. Each
     "id": "vw-cal",
     "name": "Calendar",
     "type": "calendar",
-    "config": { "dateFieldId": "fld-due", "hiddenFieldIds": [], "mode": "month" }
+    "config": { "dateFieldId": "fld-due", "hiddenFieldIds": [], "mode": "month", "showHours": true }
   }
 ]
 ```
@@ -245,7 +245,7 @@ it. A table with no views opens on an empty state, so include at least one. Each
 | Config key | Views | Notes |
 | --- | --- | --- |
 | `hiddenFieldIds` | all | Required (use `[]`). Field ids to hide. |
-| `filters` | table | `{ id, fieldId, operator, value? }`. Operators: `contains`, `notContains`, `is`, `isNot`, `isEmpty`, `isNotEmpty`, `gt`, `lt` — a rule whose operator doesn't apply to the field's type is ignored. `value` holds a choice id for `select`/`multiSelect`, a `YYYY-MM-DD` string for dates. |
+| `filters` | table | `{ id, fieldId, operator, value? }`. Operators: `contains`, `notContains`, `is`, `isNot`, `isEmpty`, `isNotEmpty`, `gt`, `lt` — a rule whose operator doesn't apply to the field's type is ignored. `value` holds a choice id for `select`/`multiSelect`, or a `YYYY-MM-DD` string for dates (an `is` rule includes timed records on that day). |
 | `sorts` | table | `{ fieldId, direction }` with `direction` of `asc` or `desc`. Applied in order; empty values always sink to the bottom. |
 | `groupByFieldId` | table, kanban | Kanban wants a `select` field — without one the board has nothing to lay out. |
 | `rowHeight` | table | `short` (default), `medium`, or `tall`. |
@@ -254,6 +254,7 @@ it. A table with no views opens on an empty state, so include at least one. Each
 | `coverFieldId` | gallery | An `image` field id. |
 | `dateFieldId` | calendar | A `date` field id, or the sentinel `"__createdAt__"` to place records by their creation time. |
 | `mode` | calendar | `month` (default) or `week`. |
+| `showHours` | calendar | In Week mode, `true` (default) uses an hourly agenda: date-only records appear in its all-day row and timed records are placed at their local start time. `false` uses a compact list inside each day. |
 
 ## `assets`
 
@@ -436,7 +437,7 @@ watcher picks up outside writes live.
 - Every `relation` field has `relation.tableId` naming a table in the same file,
   and its values are arrays of record ids from that table — arrays even when
   the field isn't `multiple`.
-- Dates are `"YYYY-MM-DD"`, numbers are JSON numbers, checkboxes are booleans.
+- Dates are `"YYYY-MM-DD"` for all-day values or `"YYYY-MM-DDTHH:mm"` for local timed values; numbers are JSON numbers, checkboxes are booleans.
 - Each view config includes `hiddenFieldIds`, and `groupByFieldId` /
   `coverFieldId` / `dateFieldId` name fields that exist and are of the right
   type.
