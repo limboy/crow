@@ -64,7 +64,12 @@ export function RecordSheet({
                         field={field}
                         value={record.values[field.id]}
                         onChange={(value) =>
-                          update((p) => ops.setRecordValue(p, record.id, field.id, value))
+                          update(
+                            (p) => ops.setRecordValue(p, record.id, field.id, value),
+                            // Text fields here commit on every keystroke, so
+                            // undo works on the edit rather than the letter.
+                            { coalesceKey: `value:${record.id}:${field.id}` }
+                          )
                         }
                         imageAspectRatio={
                           field.id === coverImage.fieldId ? coverImage.aspectRatio : undefined

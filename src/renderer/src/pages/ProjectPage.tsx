@@ -5,8 +5,10 @@ import {
   ChevronDown,
   GalleryVertical,
   Plus,
+  Redo2,
   SquareKanban,
   Table2,
+  Undo2,
   type LucideIcon
 } from 'lucide-react'
 import type { Project, Table, View, ViewType } from '@shared/types'
@@ -38,12 +40,15 @@ import { applyFilters } from '@/lib/derive'
 import { ProjectTablesContext } from '@/lib/relations'
 import {
   useProject,
+  useProjectHistory,
   useProjects,
   useUpdateProject,
   useUpdateTable,
+  type ProjectHistory,
   type ProjectUpdater,
   type TableUpdater
 } from '@/lib/queries'
+import { isMac } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 export const VIEW_ICONS: Record<ViewType, LucideIcon> = {
@@ -67,6 +72,8 @@ export default function ProjectPage(): React.JSX.Element {
   const { data: project, isLoading, isError } = useProject(id)
   const { data: projects, isLoading: isLoadingProjects } = useProjects()
   const updateProject = useUpdateProject(id)
+  const history = useProjectHistory(id)
+  useUndoRedoShortcuts(history)
 
   const [activeTableId, setActiveTableId] = useState<string>()
   // Remembered per table, so switching tables and coming back lands on the
@@ -129,10 +136,12 @@ export default function ProjectPage(): React.JSX.Element {
             onSelect={setActiveTableId}
             update={updateProject}
           />
-          <span className="ml-auto shrink-0 pl-2 pr-1 text-xs text-muted-foreground">
+          <span className="ml-auto shrink-0 pl-2 text-xs text-muted-foreground">
             {displayedRecords.length} record{displayedRecords.length === 1 ? '' : 's'}
             {filtered ? ` of ${records.length}` : ''}
           </span>
+          <Separator orientation="vertical" className="mx-1 !h-4" />
+          <HistoryButtons history={history} />
         </PageHeader>
 
         {activeTable && (
@@ -192,6 +201,67 @@ export default function ProjectPage(): React.JSX.Element {
         )}
       </div>
     </ProjectTablesContext.Provider>
+  )
+}
+
+/** True while the focus is somewhere the browser has its own undo stack —
+ *  a cell being typed into, a rename field — where ⌘Z should walk back
+ *  through the text, not through the project's edits. */
+function isTextEntry(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable || target instanceof HTMLTextAreaElement) return true
+  return target instanceof HTMLInputElement && !['button', 'checkbox', 'radio'].includes(target.type)
+}
+
+/** ⌘Z / ⇧⌘Z, plus Ctrl+Y where that's the convention. Bound on the document
+ *  rather than a container so it works no matter which view is up. */
+function useUndoRedoShortcuts({ undo, redo }: ProjectHistory): void {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      // Mid-composition (Pinyin, Kana, …) the keystroke belongs to the IME.
+      if (e.isComposing || !(e.metaKey || e.ctrlKey) || e.altKey) return
+      const key = e.key.toLowerCase()
+      const isUndo = key === 'z' && !e.shiftKey
+      const isRedo = key === 'z' ? e.shiftKey : key === 'y' && !isMac
+      if (!isUndo && !isRedo) return
+      if (isTextEntry(e.target)) return
+      e.preventDefault()
+      if (isRedo) redo()
+      else undo()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [undo, redo])
+}
+
+function HistoryButtons({ history }: { history: ProjectHistory }): React.JSX.Element {
+  const undoKeys = isMac ? '⌘Z' : 'Ctrl+Z'
+  const redoKeys = isMac ? '⇧⌘Z' : 'Ctrl+Y'
+  return (
+    <div className="flex shrink-0 items-center">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-7 text-muted-foreground"
+        title={`Undo (${undoKeys})`}
+        disabled={!history.canUndo}
+        onClick={history.undo}
+      >
+        <Undo2 />
+        <span className="sr-only">Undo</span>
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-7 text-muted-foreground"
+        title={`Redo (${redoKeys})`}
+        disabled={!history.canRedo}
+        onClick={history.redo}
+      >
+        <Redo2 />
+        <span className="sr-only">Redo</span>
+      </Button>
+    </div>
   )
 }
 

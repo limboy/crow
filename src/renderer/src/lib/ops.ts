@@ -17,8 +17,19 @@ import {
 
 // --- Tables -----------------------------------------------------------------
 
+/** Returns the project unchanged when `fn` leaves the table as it was — the
+ *  transforms below hand back their input when an edit doesn't apply, and
+ *  callers (see useUpdateProject) use identity to tell a real edit apart from
+ *  a no-op. */
 export function patchTable(project: Project, tableId: string, fn: (table: Table) => Table): Project {
-  return { ...project, tables: project.tables.map((t) => (t.id === tableId ? fn(t) : t)) }
+  let changed = false
+  const tables = project.tables.map((t) => {
+    if (t.id !== tableId) return t
+    const next = fn(t)
+    if (next !== t) changed = true
+    return next
+  })
+  return changed ? { ...project, tables } : project
 }
 
 /** Appends a table with a name that doesn't collide with the existing ones. */
