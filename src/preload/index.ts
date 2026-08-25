@@ -9,6 +9,7 @@ const api: Api = {
   getProject: (id: string) => ipcRenderer.invoke('projects:get', id),
   saveProject: (project: Project) => ipcRenderer.invoke('projects:save', project),
   deleteProject: (id: string) => ipcRenderer.invoke('projects:delete', id),
+  setProjectOrder: (ids: string[]) => ipcRenderer.invoke('projects:setOrder', ids),
   exportProject: (id: string) => ipcRenderer.invoke('projects:export', id),
   importProject: () => ipcRenderer.invoke('projects:import'),
   exportCsv: (suggestedName: string, content: string) =>

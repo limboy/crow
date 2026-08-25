@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import type { Project, Table } from '@shared/types'
+import type { Project, ProjectMeta, Table } from '@shared/types'
 import {
   clearHistory,
   historySnapshot,
@@ -13,6 +13,23 @@ import { patchTable } from '@/lib/ops'
 
 export function useProjects() {
   return useQuery({ queryKey: ['projects'], queryFn: () => window.api.listProjects() })
+}
+
+export function useSetProjectOrder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ordered: ProjectMeta[]) =>
+      window.api.setProjectOrder(ordered.map((project) => project.id)),
+    onMutate: (ordered) => {
+      const previous = queryClient.getQueryData<ProjectMeta[]>(['projects'])
+      queryClient.setQueryData(['projects'], ordered)
+      return { previous }
+    },
+    onError: (_error, _ordered, context) => {
+      if (context?.previous) queryClient.setQueryData(['projects'], context.previous)
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    }
+  })
 }
 
 export function useProject(id: string) {
@@ -103,8 +120,8 @@ export function useProjectHistory(id: string): ProjectHistory {
       if (!current) return
       const restored = take(id, current)
       if (!restored) return
-      // Restored content, fresh timestamp: the file did just change, and the
-      // project list is ordered by updatedAt.
+      // Restored content gets a fresh timestamp because it was just changed,
+      // even when the user has manually ordered the project list.
       commitProject(queryClient, id, { ...restored, updatedAt: new Date().toISOString() })
     },
     [id, queryClient]

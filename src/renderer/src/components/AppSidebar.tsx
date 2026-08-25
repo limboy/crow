@@ -1,7 +1,23 @@
 import { useState } from 'react'
 import { NavLink, useMatch, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Plus, Settings } from 'lucide-react'
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable'
+import { GripVertical, Plus, Settings } from 'lucide-react'
 import type { ProjectMeta } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,10 +37,17 @@ import {
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
+  SidebarMenuAction,
   SidebarMenuItem,
   SidebarRail
 } from '@/components/ui/sidebar'
-import { useCreateProject, useDeleteProject, useImportProject, useProjects } from '@/lib/queries'
+import {
+  useCreateProject,
+  useDeleteProject,
+  useImportProject,
+  useProjects,
+  useSetProjectOrder
+} from '@/lib/queries'
 import { isMac } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { UpdateButton } from '@/components/UpdateButton'
@@ -37,6 +60,11 @@ export function AppSidebar(): React.JSX.Element {
   const { data: projects, isLoading } = useProjects()
   const createProject = useCreateProject()
   const importProject = useImportProject()
+  const setProjectOrder = useSetProjectOrder()
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
 
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
@@ -71,6 +99,14 @@ export function AppSidebar(): React.JSX.Element {
     else if (action === 'import') handleImport()
   }
 
+  const handleDragEnd = ({ active, over }: DragEndEvent): void => {
+    if (!projects || !over || active.id === over.id || setProjectOrder.isPending) return
+    const from = projects.findIndex((project) => project.id === active.id)
+    const to = projects.findIndex((project) => project.id === over.id)
+    if (from === -1 || to === -1) return
+    setProjectOrder.mutate(arrayMove(projects, from, to))
+  }
+
   return (
     <Sidebar>
       {/* Empty drag spacer: still reserves room for the macOS traffic lights
@@ -87,15 +123,31 @@ export function AppSidebar(): React.JSX.Element {
             <Plus />
             <span className="sr-only">Add project</span>
           </SidebarGroupAction>
-          <SidebarMenu>
-            {isLoading ? null : projects && projects.length > 0 ? (
-              projects.map((project) => (
-                <ProjectMenuItem key={project.id} project={project} activeId={activeId} />
-              ))
-            ) : (
-              <p className="px-2 py-1.5 text-xs text-muted-foreground">No projects yet.</p>
-            )}
-          </SidebarMenu>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={projects?.map((project) => project.id) ?? []}
+              strategy={verticalListSortingStrategy}
+            >
+              <SidebarMenu>
+                {isLoading ? null : projects && projects.length > 0 ? (
+                  projects.map((project) => (
+                    <ProjectMenuItem
+                      key={project.id}
+                      project={project}
+                      activeId={activeId}
+                      sortingDisabled={setProjectOrder.isPending}
+                    />
+                  ))
+                ) : (
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground">No projects yet.</p>
+                )}
+              </SidebarMenu>
+            </SortableContext>
+          </DndContext>
         </SidebarGroup>
       </SidebarContent>
 
@@ -146,14 +198,25 @@ export function AppSidebar(): React.JSX.Element {
 
 function ProjectMenuItem({
   project,
-  activeId
+  activeId,
+  sortingDisabled
 }: {
   project: ProjectMeta
   activeId: string | undefined
+  sortingDisabled: boolean
 }): React.JSX.Element {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const deleteProject = useDeleteProject()
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: project.id, disabled: sortingDisabled })
 
   const [renameOpen, setRenameOpen] = useState(false)
   const [renameValue, setRenameValue] = useState(project.name)
@@ -214,16 +277,37 @@ function ProjectMenuItem({
 
   return (
     <>
-      <SidebarMenuItem onContextMenu={handleContextMenu}>
+      <SidebarMenuItem
+        ref={setNodeRef}
+        style={{
+          transform: transform
+            ? `translate3d(${transform.x}px, ${transform.y}px, 0) scaleX(${transform.scaleX}) scaleY(${transform.scaleY})`
+            : undefined,
+          transition
+        }}
+        className={cn(isDragging && 'opacity-60')}
+        {...listeners}
+        onContextMenu={handleContextMenu}
+      >
         <SidebarMenuButton
           className="cursor-default"
           isActive={project.id === activeId}
           render={
-            <NavLink to={`/project/${project.id}`}>
+            <NavLink to={`/project/${project.id}`} draggable={false}>
               <span className="truncate">{project.name}</span>
             </NavLink>
           }
         />
+        <SidebarMenuAction
+          ref={setActivatorNodeRef}
+          showOnHover
+          className="cursor-grab active:cursor-grabbing"
+          title="Drag to reorder"
+          aria-label={`Reorder ${project.name}`}
+          {...attributes}
+        >
+          <GripVertical />
+        </SidebarMenuAction>
       </SidebarMenuItem>
 
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>

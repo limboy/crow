@@ -300,6 +300,7 @@ export interface Api {
   getProject: (id: string) => Promise<Project>
   saveProject: (project: Project) => Promise<void>
   deleteProject: (id: string) => Promise<void>
+  setProjectOrder: (ids: string[]) => Promise<void>
   /** Writes the project and its media to a `.crow` file the user picks;
    *  resolves with the saved path, or null if cancelled. */
   exportProject: (id: string) => Promise<string | null>

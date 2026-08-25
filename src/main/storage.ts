@@ -8,6 +8,7 @@ import { getDataDir } from './config'
 export const SAFE_ID = /^[a-zA-Z0-9-]+$/
 
 export const DATA_FILE = 'data.json'
+const PROJECT_ORDER_FILE = 'order.json'
 
 export const projectsRootDir = (): string => join(getDataDir(), 'projects')
 
@@ -22,6 +23,24 @@ export function projectDir(id: string): string {
 
 function projectFile(id: string): string {
   return join(projectDir(id), DATA_FILE)
+}
+
+
+async function readProjectOrder(): Promise<string[] | null> {
+  try {
+    const parsed: unknown = JSON.parse(
+      await fs.readFile(join(projectsRootDir(), PROJECT_ORDER_FILE), 'utf-8')
+    )
+    if (!Array.isArray(parsed)) return null
+    const seen = new Set<string>()
+    return parsed.filter((id): id is string => {
+      if (typeof id !== 'string' || !SAFE_ID.test(id) || seen.has(id)) return false
+      seen.add(id)
+      return true
+    })
+  } catch {
+    return null
+  }
 }
 
 // Timestamps of writes made by this process, so the directory watcher can
@@ -63,7 +82,32 @@ export async function listProjects(): Promise<ProjectMeta[]> {
       // skip unreadable files rather than failing the whole list
     }
   }
-  return metas.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+
+  metas.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const order = await readProjectOrder()
+  if (!order) return metas
+
+  const byId = new Map(metas.map((project) => [project.id, project]))
+  const ordered = order.flatMap((id) => {
+    const project = byId.get(id)
+    if (!project) return []
+    byId.delete(id)
+    return [project]
+  })
+  return ordered.concat([...byId.values()])
+}
+
+export async function saveProjectOrder(ids: string[]): Promise<void> {
+  if (new Set(ids).size !== ids.length || ids.some((id) => !SAFE_ID.test(id))) {
+    throw new Error('Invalid project order')
+  }
+
+  const existing = new Set(await listProjectIds())
+  const order = ids.filter((id) => existing.has(id))
+  const target = join(projectsRootDir(), PROJECT_ORDER_FILE)
+  const tmp = `${target}.tmp`
+  await fs.writeFile(tmp, JSON.stringify(order, null, 2), 'utf-8')
+  await fs.rename(tmp, target)
 }
 
 /** Projects are migrated on the way out rather than rewritten in place, so an
