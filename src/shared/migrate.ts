@@ -171,6 +171,25 @@ function normalizeRelationPairs(project: Project): Project {
   return project
 }
 
+function normalizeAudioPlayback(value: unknown): TableViewConfig['audioPlayback'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const normalized: NonNullable<TableViewConfig['audioPlayback']> = {}
+  for (const [fieldId, raw] of Object.entries(value)) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+    const entry = raw as Record<string, unknown>
+    const repeatMode =
+      entry.repeatMode === 'one' || entry.repeatMode === 'all'
+        ? entry.repeatMode
+        : entry.loop === true
+          ? 'one'
+          : 'off'
+    const shuffleMode =
+      entry.shuffleMode === 'on' || entry.shuffle === true ? 'on' : 'off'
+    normalized[fieldId] = { repeatMode, shuffleMode }
+  }
+  return Object.keys(normalized).length > 0 ? normalized : undefined
+}
+
 /** View rules evolved after plenty of projects had already been written to
  *  disk, so fill in the filter defaults the rest of the app expects. */
 function normalizeView(view: View): View {
@@ -182,7 +201,10 @@ function normalizeView(view: View): View {
       hiddenFieldIds: Array.isArray(config.hiddenFieldIds) ? config.hiddenFieldIds : [],
       filters: Array.isArray(config.filters) ? config.filters : [],
       filterMatch: config.filterMatch === 'any' ? 'any' : 'all',
-      sorts: Array.isArray(config.sorts) ? config.sorts : []
+      sorts: Array.isArray(config.sorts) ? config.sorts : [],
+      ...(view.type === 'table'
+        ? { audioPlayback: normalizeAudioPlayback(config.audioPlayback) }
+        : {})
     }
   } as View
 }

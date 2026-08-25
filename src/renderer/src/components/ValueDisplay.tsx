@@ -11,7 +11,7 @@ import {
 } from '@/lib/fields'
 import { useProjectTables } from '@/lib/relations'
 import { cn } from '@/lib/utils'
-import { AudioPlayer } from './AudioPlayer'
+import { AudioPlayer, type AudioPlayback } from './AudioPlayer'
 import { ChoiceBadge } from './ChoiceBadge'
 import { RecordBadge } from './RecordBadge'
 
@@ -20,13 +20,16 @@ export function ValueDisplay({
   field,
   value,
   className,
-  lineClamp = 1
+  lineClamp = 1,
+  audioPlayback
 }: {
   field: Field
   value: unknown
   className?: string
   /** Number of text lines to wrap to before truncating; 1 keeps the classic single-line clip. */
   lineClamp?: number
+  /** Optional table-column playlist behavior; cards and editors remain standalone. */
+  audioPlayback?: AudioPlayback
 }): React.JSX.Element | null {
   // Only relation cells read this, but the hook has to run unconditionally.
   const tables = useProjectTables()
@@ -109,7 +112,13 @@ export function ValueDisplay({
       )
     }
     case 'audio':
-      return <AudioPlayer src={String(value)} className={cn('max-w-56', className)} />
+      return (
+        <AudioPlayer
+          src={String(value)}
+          className={cn('max-w-56', className)}
+          playback={audioPlayback}
+        />
+      )
     default:
       return <span className={cn(wrapClass, className)}>{displayValue(field, value, tables)}</span>
   }

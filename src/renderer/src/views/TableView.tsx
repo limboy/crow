@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Plus, Trash2 } from 'lucide-react'
-import type { Field, Table, RecordRow, View } from '@shared/types'
+import type {
+  AudioRepeatMode,
+  AudioShuffleMode,
+  Field,
+  Table,
+  RecordRow,
+  View
+} from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -17,11 +24,17 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent } from '@/components/ui/popover'
 import { ChoiceBadge } from '@/components/ChoiceBadge'
+import type { AudioPlayback } from '@/components/AudioPlayer'
 import { ValueDisplay } from '@/components/ValueDisplay'
 import { FieldDialog } from '@/components/FieldDialog'
 import { SummaryBar } from '@/components/SummaryBar'
@@ -447,6 +460,16 @@ export function TableView({
               update={update}
               heightInfo={heightInfo}
               width={columnWidth(field.id)}
+              audioPlayback={
+                field.type === 'audio'
+                  ? {
+                      groupId: `${view.id}:${field.id}`,
+                      order: number,
+                      repeatMode: config.audioPlayback?.[field.id]?.repeatMode ?? 'off',
+                      shuffleMode: config.audioPlayback?.[field.id]?.shuffleMode ?? 'off'
+                    }
+                  : undefined
+              }
               selected={
                 selectedCell?.recordId === record.id && selectedCell?.fieldId === field.id
               }
@@ -570,10 +593,62 @@ export function TableView({
                           </button>
                         }
                       />
-                      <DropdownMenuContent align="start" className="w-auto min-w-32">
+                      <DropdownMenuContent align="start" className="w-auto min-w-36">
                         <DropdownMenuItem onClick={() => setFieldDialog({ field })}>
                           Edit field
                         </DropdownMenuItem>
+                        {field.type === 'audio' && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger>Repeat mode</DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent>
+                                <DropdownMenuRadioGroup
+                                  value={config.audioPlayback?.[field.id]?.repeatMode ?? 'off'}
+                                  onValueChange={(next) =>
+                                    patchConfig({
+                                      audioPlayback: {
+                                        ...config.audioPlayback,
+                                        [field.id]: {
+                                          repeatMode: next as AudioRepeatMode,
+                                          shuffleMode:
+                                            config.audioPlayback?.[field.id]?.shuffleMode ?? 'off'
+                                        }
+                                      }
+                                    })
+                                  }
+                                >
+                                  <DropdownMenuRadioItem value="off">Off</DropdownMenuRadioItem>
+                                  <DropdownMenuRadioItem value="one">One</DropdownMenuRadioItem>
+                                  <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
+                                </DropdownMenuRadioGroup>
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger>Shuffle mode</DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent>
+                                <DropdownMenuRadioGroup
+                                  value={config.audioPlayback?.[field.id]?.shuffleMode ?? 'off'}
+                                  onValueChange={(next) =>
+                                    patchConfig({
+                                      audioPlayback: {
+                                        ...config.audioPlayback,
+                                        [field.id]: {
+                                          repeatMode:
+                                            config.audioPlayback?.[field.id]?.repeatMode ?? 'off',
+                                          shuffleMode: next as AudioShuffleMode
+                                        }
+                                      }
+                                    })
+                                  }
+                                >
+                                  <DropdownMenuRadioItem value="off">Off</DropdownMenuRadioItem>
+                                  <DropdownMenuRadioItem value="on">On</DropdownMenuRadioItem>
+                                </DropdownMenuRadioGroup>
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                          </>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={() => {
@@ -748,6 +823,7 @@ function TableCell({
   update,
   heightInfo,
   width,
+  audioPlayback,
   selected,
   editing,
   editSeed,
@@ -763,6 +839,7 @@ function TableCell({
   update: TableUpdater
   heightInfo: RowHeightInfo
   width: number
+  audioPlayback?: AudioPlayback
   selected: boolean
   editing: boolean
   editSeed?: string
@@ -803,6 +880,7 @@ function TableCell({
         value={value}
         onChange={setValue}
         lineClamp={heightInfo.lineClamp}
+        audioPlayback={audioPlayback}
         selected={selected}
         editing={editing}
         editSeed={editSeed}
@@ -821,6 +899,7 @@ function CellContent({
   value,
   onChange,
   lineClamp,
+  audioPlayback,
   selected,
   editing,
   editSeed,
@@ -834,6 +913,7 @@ function CellContent({
   value: unknown
   onChange: (value: unknown) => void
   lineClamp: number
+  audioPlayback?: AudioPlayback
   selected: boolean
   editing: boolean
   editSeed?: string
@@ -913,7 +993,12 @@ function CellContent({
               }
             : undefined)}
         >
-          <ValueDisplay field={field} value={value} lineClamp={lineClamp} />
+          <ValueDisplay
+            field={field}
+            value={value}
+            lineClamp={lineClamp}
+            audioPlayback={audioPlayback}
+          />
         </div>
         <PopoverContent
           className={cn(

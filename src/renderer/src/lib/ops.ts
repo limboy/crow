@@ -445,6 +445,14 @@ export function updateField(table: Table, fieldId: string, patch: Partial<Field>
     fields: table.fields.map((f) => (f.id === fieldId ? { ...f, ...patch, id: f.id } : f))
   }
 }
+function withoutKey<T>(
+  values: Record<string, T> | undefined,
+  key: string
+): Record<string, T> | undefined {
+  if (!values || !(key in values)) return values
+  const { [key]: _removed, ...rest } = values
+  return rest
+}
 
 /** Removes the field plus every reference to it in records and view configs. */
 export function deleteField(table: Table, fieldId: string): Table {
@@ -467,7 +475,10 @@ export function deleteField(table: Table, fieldId: string): Table {
             ...view.config,
             ...shared,
             groupByFieldId:
-              view.config.groupByFieldId === fieldId ? undefined : view.config.groupByFieldId
+              view.config.groupByFieldId === fieldId ? undefined : view.config.groupByFieldId,
+            columnWidths: withoutKey(view.config.columnWidths, fieldId),
+            summaries: withoutKey(view.config.summaries, fieldId),
+            audioPlayback: withoutKey(view.config.audioPlayback, fieldId)
           }
         }
       case 'kanban':

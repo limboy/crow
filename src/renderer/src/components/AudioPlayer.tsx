@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Pause, Play } from 'lucide-react'
+import type { AudioRepeatMode, AudioShuffleMode } from '@shared/types'
 import { cn } from '@/lib/utils'
 
 function formatTime(seconds: number): string {
@@ -10,11 +11,102 @@ function formatTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-// Every <AudioPlayer> instance is independent (own <audio> element, own
-// state), but only one clip should ever be audible at a time. Track the
-// single currently-playing element at module scope so starting one player
-// can reach across and pause whichever other one is running.
+export interface AudioPlayback {
+  groupId: string
+  order: number
+  repeatMode: AudioRepeatMode
+  shuffleMode: AudioShuffleMode
+}
+
+interface PlaylistState {
+  entries: Map<HTMLAudioElement, number>
+  shuffleRemaining: HTMLAudioElement[]
+  next?: HTMLAudioElement
+  shuffleMode?: AudioShuffleMode
+}
+
+// Players remain separate controls, but a table column can opt them into one
+// ordered playlist. Module scope also keeps the existing one-audible-clip
+// invariant across standalone players, cards, editors, and table playlists.
 let currentlyPlaying: HTMLAudioElement | null = null
+const playlists = new Map<string, PlaylistState>()
+
+function playlistState(groupId: string): PlaylistState {
+  let state = playlists.get(groupId)
+  if (!state) {
+    state = { entries: new Map(), shuffleRemaining: [] }
+    playlists.set(groupId, state)
+  }
+  return state
+}
+
+function shuffled(items: HTMLAudioElement[]): HTMLAudioElement[] {
+  const result = [...items]
+  for (let i = result.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[result[i], result[j]] = [result[j], result[i]]
+  }
+  return result
+}
+
+function playFromStart(audio: HTMLAudioElement): void {
+  audio.currentTime = 0
+  void audio.play().catch(() => undefined)
+}
+
+function beginPlaylistSession(audio: HTMLAudioElement, playback: AudioPlayback): void {
+  const state = playlistState(playback.groupId)
+  if (state.next === audio) {
+    state.next = undefined
+    return
+  }
+  state.shuffleMode = playback.shuffleMode
+  state.shuffleRemaining = shuffled(
+    Array.from(state.entries.keys()).filter((candidate) => candidate !== audio)
+  )
+}
+
+function advancePlaylist(audio: HTMLAudioElement, playback: AudioPlayback): void {
+  const state = playlists.get(playback.groupId)
+  if (!state?.entries.has(audio)) return
+
+  if (playback.repeatMode === 'one') {
+    state.next = audio
+    playFromStart(audio)
+    return
+  }
+
+  let next: HTMLAudioElement | undefined
+  if (playback.shuffleMode === 'on') {
+    if (state.shuffleMode !== 'on') {
+      state.shuffleMode = 'on'
+      state.shuffleRemaining = shuffled(
+        Array.from(state.entries.keys()).filter((candidate) => candidate !== audio)
+      )
+    }
+    state.shuffleRemaining = state.shuffleRemaining.filter(
+      (candidate) => candidate !== audio && state.entries.has(candidate)
+    )
+    next = state.shuffleRemaining.shift()
+    if (!next && playback.repeatMode === 'all') {
+      state.shuffleRemaining = shuffled(
+        Array.from(state.entries.keys()).filter((candidate) => candidate !== audio)
+      )
+      next = state.shuffleRemaining.shift() ?? audio
+    }
+  } else {
+    state.shuffleMode = 'off'
+    const ordered = Array.from(state.entries.entries()).sort((a, b) => a[1] - b[1])
+    const index = ordered.findIndex(([candidate]) => candidate === audio)
+    next = ordered[index + 1]?.[0]
+    if (!next && playback.repeatMode === 'all') next = ordered[0]?.[0]
+  }
+
+  if (next) {
+    state.next = next
+    playFromStart(next)
+  }
+}
 
 function pauseOthers(el: HTMLAudioElement): void {
   if (currentlyPlaying && currentlyPlaying !== el) {
@@ -28,7 +120,15 @@ function pauseOthers(el: HTMLAudioElement): void {
  * `<audio controls>`, which also ships a volume slider and an overflow menu
  * (playback speed, download, loop) we don't want here.
  */
-export function AudioPlayer({ src, className }: { src: string; className?: string }): React.JSX.Element {
+export function AudioPlayer({
+  src,
+  className,
+  playback
+}: {
+  src: string
+  className?: string
+  playback?: AudioPlayback
+}): React.JSX.Element {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false)
   const [duration, setDuration] = useState(0)
@@ -40,6 +140,17 @@ export function AudioPlayer({ src, className }: { src: string; className?: strin
     setDuration(0)
     setCurrent(0)
   }, [src])
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio || !playback) return
+    const state = playlistState(playback.groupId)
+    state.entries.set(audio, playback.order)
+    return () => {
+      state.entries.delete(audio)
+      state.shuffleRemaining = state.shuffleRemaining.filter((candidate) => candidate !== audio)
+      if (state.entries.size === 0) playlists.delete(playback.groupId)
+    }
+  }, [playback?.groupId, playback?.order])
 
   // Don't leave a dangling reference behind when this player unmounts (e.g.
   // the record it belongs to scrolls out of a virtualized list) while it was
@@ -99,10 +210,14 @@ export function AudioPlayer({ src, className }: { src: string; className?: strin
         className="hidden"
         onPlay={(e) => {
           pauseOthers(e.currentTarget)
+          if (playback) beginPlaylistSession(e.currentTarget, playback)
           setPlaying(true)
         }}
         onPause={() => setPlaying(false)}
-        onEnded={() => setPlaying(false)}
+        onEnded={(e) => {
+          setPlaying(false)
+          if (playback) advancePlaylist(e.currentTarget, playback)
+        }}
         onError={() => setPlaying(false)}
         onStalled={() => setPlaying(false)}
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}

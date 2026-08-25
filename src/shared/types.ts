@@ -86,6 +86,12 @@ export interface SortRule {
 }
 
 export type RowHeight = 'short' | 'medium' | 'tall'
+export type AudioRepeatMode = 'off' | 'one' | 'all'
+export type AudioShuffleMode = 'off' | 'on'
+export interface AudioPlaybackConfig {
+  repeatMode: AudioRepeatMode
+  shuffleMode: AudioShuffleMode
+}
 
 /** A column footer statistic. Every field type offers the counting ones;
  *  `sum`…`range` are number-only and `earliest`…`dateRange` date-only
@@ -124,6 +130,8 @@ export interface TableViewConfig extends ViewRules {
   columnWidths?: Record<string, number>
   /** Summary shown in the bottom bar per field id; unset (or `none`) shows nothing. */
   summaries?: Record<string, SummaryKey>
+  /** Playlist behavior per audio field; unset uses ordered, non-repeating playback. */
+  audioPlayback?: Record<string, AudioPlaybackConfig>
 }
 
 /** Aspect ratio (width:height) for a card's featured image, in Kanban,
