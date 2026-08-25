@@ -2,36 +2,56 @@ import { app, Menu, type MenuItemConstructorOptions } from 'electron'
 import { installCli } from './cli'
 
 /**
- * macOS app menu: Electron's own default template (see its docs) plus one
- * item — "Install 'crow' Command in PATH" — for the bundled CLI (cli.ts).
- * Only called on darwin; other platforms keep Electron's built-in default.
+ * Application menu supporting macOS, Windows, and Linux:
+ * - macOS: App menu (with "Install 'crow' Command in PATH"), File (New Window, Close Window), Edit, View, Window
+ * - Windows / Linux: File (New Window, Exit), Edit, View, Window
  */
-export function buildAppMenu(): Menu {
+export function buildAppMenu(onNewWindow: () => void): Menu {
+  const isMac = process.platform === 'darwin'
+
   const template: MenuItemConstructorOptions[] = [
+    ...(isMac
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: 'about' as const },
+              { type: 'separator' as const },
+              {
+                label: "Install 'crow' Command in PATH",
+                click: () => {
+                  void installCli()
+                }
+              },
+              { type: 'separator' as const },
+              { role: 'services' as const },
+              { type: 'separator' as const },
+              { role: 'hide' as const },
+              { role: 'hideOthers' as const },
+              { role: 'unhide' as const },
+              { type: 'separator' as const },
+              { role: 'quit' as const }
+            ]
+          }
+        ]
+      : []),
     {
-      label: app.name,
+      label: 'File',
       submenu: [
-        { role: 'about' },
-        { type: 'separator' },
         {
-          label: "Install 'crow' Command in PATH",
+          label: 'New Window',
+          accelerator: 'CmdOrCtrl+N',
           click: () => {
-            void installCli()
+            onNewWindow()
           }
         },
-        { type: 'separator' },
-        { role: 'services' },
-        { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
-        { type: 'separator' },
-        { role: 'quit' }
+        { type: 'separator' as const },
+        isMac ? { role: 'close' as const } : { role: 'quit' as const }
       ]
     },
-    { role: 'editMenu' },
-    { role: 'viewMenu' },
-    { role: 'windowMenu' }
+    { role: 'editMenu' as const },
+    { role: 'viewMenu' as const },
+    { role: 'windowMenu' as const }
   ]
   return Menu.buildFromTemplate(template)
 }

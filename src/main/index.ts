@@ -18,12 +18,20 @@ protocol.registerSchemesAsPrivileged([
 
 const iconPath = join(__dirname, '../../build/icon.png')
 
-function createWindow(): void {
+export function createWindow(): BrowserWindow {
+  const focusedWin = BrowserWindow.getFocusedWindow()
+  let bounds: { x?: number; y?: number } = {}
+  if (focusedWin) {
+    const [x, y] = focusedWin.getPosition()
+    bounds = { x: x + 24, y: y + 24 }
+  }
+
   const win = new BrowserWindow({
     width: 1320,
     height: 860,
     minWidth: 960,
     minHeight: 600,
+    ...bounds,
     show: false,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     trafficLightPosition: { x: 16, y: 16 },
@@ -57,14 +65,11 @@ function createWindow(): void {
   })
 
   win.loadURL(appUrl)
+  return win
 }
 
 app.whenReady().then(async () => {
-  // Adds "Install 'crow' Command in PATH" to Electron's default mac menu;
-  // other platforms keep the built-in default (CLI install isn't wired up
-  // there yet — see src/main/cli.ts).
-  if (process.platform === 'darwin') Menu.setApplicationMenu(buildAppMenu())
-
+  Menu.setApplicationMenu(buildAppMenu(() => createWindow()))
   registerImageProtocol()
   registerAudioProtocol()
   registerAttachmentProtocol()

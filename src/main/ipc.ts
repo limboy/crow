@@ -23,17 +23,45 @@ import { getReadyUpdateVersion, installReadyUpdate } from './updater'
 import { defaultDataDir, getDataDir, setDataDir } from './config'
 import { watchProjects } from './watcher'
 
+function broadcastToOthers(sender: Electron.WebContents, channel: string, ...args: unknown[]): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed() && win.webContents !== sender) {
+      win.webContents.send(channel, ...args)
+    }
+  }
+}
+
 export function registerIpc(): void {
   ipcMain.handle('projects:list', () => listProjects())
-  ipcMain.handle('projects:create', (_e, name: string) => createProject(name))
+  ipcMain.handle('projects:create', async (e, name: string) => {
+    const project = await createProject(name)
+    broadcastToOthers(e.sender, 'projects:changed')
+    return project
+  })
   ipcMain.handle('projects:get', (_e, id: string) => getProject(id))
-  ipcMain.handle('projects:save', (_e, project: Project) => saveProject(project))
-  ipcMain.handle('projects:delete', (_e, id: string) => deleteProject(id))
-  ipcMain.handle('projects:setOrder', (_e, ids: string[]) => saveProjectOrder(ids))
+  ipcMain.handle('projects:save', async (e, project: Project) => {
+    const saved = await saveProject(project)
+    broadcastToOthers(e.sender, 'projects:changed')
+    return saved
+  })
+  ipcMain.handle('projects:delete', async (e, id: string) => {
+    const res = await deleteProject(id)
+    broadcastToOthers(e.sender, 'projects:changed')
+    return res
+  })
+  ipcMain.handle('projects:setOrder', async (e, ids: string[]) => {
+    const res = await saveProjectOrder(ids)
+    broadcastToOthers(e.sender, 'projects:changed')
+    return res
+  })
   ipcMain.handle('projects:export', (e, id: string) =>
     exportProject(BrowserWindow.fromWebContents(e.sender), id)
   )
-  ipcMain.handle('projects:import', (e) => importProject(BrowserWindow.fromWebContents(e.sender)))
+  ipcMain.handle('projects:import', async (e) => {
+    const project = await importProject(BrowserWindow.fromWebContents(e.sender))
+    if (project) broadcastToOthers(e.sender, 'projects:changed')
+    return project
+  })
   ipcMain.handle('csv:export', (e, suggestedName: string, content: string) =>
     exportCsv(BrowserWindow.fromWebContents(e.sender), suggestedName, content)
   )
