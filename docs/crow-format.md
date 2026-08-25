@@ -274,7 +274,7 @@ it. A table with no views opens on an empty state, so include at least one. Each
 | `filters` | table | `{ id, fieldId, operator, value? }`. Operators: `contains`, `notContains`, `is`, `isNot`, `isEmpty`, `isNotEmpty`, `gt`, `lt` — a rule whose operator doesn't apply to the field's type is ignored. `value` holds a choice id for `select`/`multiSelect`, or a `YYYY-MM-DD` string for dates (an `is` rule includes timed records on that day). |
 | `sorts` | table | `{ fieldId, direction }` with `direction` of `asc` or `desc`. Applied in order; empty values always sink to the bottom. |
 | `groupByFieldId` | table, kanban | Kanban wants a `select` field — without one the board has nothing to lay out. |
-| `rowHeight` | table | `short` (default), `medium`, or `tall`. |
+| `rowHeight` | table | `short` (default), `medium`, `tall`, or `extraTall`. |
 | `columnWidths` | table | `{ "<fieldId>": 220 }` in pixels; unset fields use the default width. |
 | `summaries` | table | `{ "<fieldId>": "sum" }` — the statistic that field's cell shows in the bottom bar. Any field takes `none` (the default), `empty`, `filled`, `unique`, `percentEmpty`, `percentFilled`, `percentUnique`; `number` and `rating` fields also take `sum`, `average`, `median`, `min`, `max`, `range`, and `date` fields `earliest`, `latest`, `dateRange`. A summary that doesn't apply to the field's type shows nothing. |
 | `coverFieldId` | gallery | An `image` field id. |

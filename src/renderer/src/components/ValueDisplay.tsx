@@ -39,7 +39,8 @@ export function ValueDisplay({
 
   // Tailwind needs literal class names to see at build time, so map rather than interpolate.
   const clampClass =
-    { 2: 'line-clamp-2', 4: 'line-clamp-4' }[lineClamp] ?? (lineClamp > 1 ? 'line-clamp-6' : null)
+    { 2: 'line-clamp-2', 4: 'line-clamp-4', 9: 'line-clamp-9' }[lineClamp] ??
+    (lineClamp > 1 ? 'line-clamp-6' : null)
   const wrapClass = clampClass ? cn(clampClass, 'whitespace-pre-wrap break-words') : 'truncate'
 
   switch (field.type) {
@@ -98,7 +99,7 @@ export function ValueDisplay({
       // height in standard table layout), so the thumbnail would render at its
       // intrinsic size and blow up the row. Cap it to a fixed height per row-height
       // tier instead, sized to fit within that row after its padding/border.
-      const imageMaxHeightClass = { 2: 'max-h-12', 4: 'max-h-24' }[lineClamp] ?? 'max-h-32'
+      const imageMaxHeightClass = { 2: 'max-h-12', 4: 'max-h-24', 9: 'max-h-48' }[lineClamp] ?? 'max-h-32'
       return (
         <img
           src={String(value)}

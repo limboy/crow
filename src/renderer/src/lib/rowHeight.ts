@@ -1,6 +1,11 @@
 import type { ComponentType, SVGProps } from 'react'
 import type { RowHeight } from '@shared/types'
-import { RowHeightMediumIcon, RowHeightShortIcon, RowHeightTallIcon } from './rowHeightIcons'
+import {
+  RowHeightExtraTallIcon,
+  RowHeightMediumIcon,
+  RowHeightShortIcon,
+  RowHeightTallIcon
+} from './rowHeightIcons'
 
 export type RowHeightIcon = ComponentType<SVGProps<SVGSVGElement>>
 
@@ -34,7 +39,15 @@ export const ROW_HEIGHT_OPTIONS: RowHeightInfo[] = [
     px: 64,
     lineClamp: 2
   },
-  { value: 'tall', label: 'Tall', icon: RowHeightTallIcon, rowClass: 'h-28', px: 112, lineClamp: 4 }
+  { value: 'tall', label: 'Tall', icon: RowHeightTallIcon, rowClass: 'h-28', px: 112, lineClamp: 4 },
+  {
+    value: 'extraTall',
+    label: 'Extra Tall',
+    icon: RowHeightExtraTallIcon,
+    rowClass: 'h-52',
+    px: 208,
+    lineClamp: 9
+  }
 ]
 
 export function rowHeightInfo(value: RowHeight | undefined): RowHeightInfo {

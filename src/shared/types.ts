@@ -107,7 +107,7 @@ export interface SortRule {
   direction: 'asc' | 'desc'
 }
 
-export type RowHeight = 'short' | 'medium' | 'tall'
+export type RowHeight = 'short' | 'medium' | 'tall' | 'extraTall'
 export type AudioRepeatMode = 'off' | 'one' | 'all'
 export type AudioShuffleMode = 'off' | 'on'
 export interface AudioPlaybackConfig {
