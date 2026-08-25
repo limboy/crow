@@ -1,10 +1,10 @@
 import { BrowserWindow, dialog, ipcMain, Menu } from 'electron'
 import type { ConfirmDialogOptions, ContextMenuItem, Project } from '@shared/types'
 import { createProject, deleteProject, ensureProjectsRootDir, getProject, listProjects, saveProject } from './storage'
-import { importImageData, pickImage } from './images'
+import { importImageData, pickImage, saveImageAs } from './images'
 import { exportProject, importProject } from './transfer'
 import { exportCsv, importCsv } from './csv'
-import { importAudioData, pickAudio } from './audio'
+import { importAudioData, pickAudio, saveAudioAs } from './audio'
 import {
   importAttachmentData,
   openAttachment,
@@ -35,11 +35,17 @@ export function registerIpc(): void {
   ipcMain.handle('images:importData', (_e, projectId: string, name: string, data: ArrayBuffer) =>
     importImageData(projectId, name, data)
   )
+  ipcMain.handle('images:saveAs', (e, url: string) =>
+    saveImageAs(BrowserWindow.fromWebContents(e.sender), url)
+  )
   ipcMain.handle('audio:pick', (e, projectId: string) =>
     pickAudio(BrowserWindow.fromWebContents(e.sender), projectId)
   )
   ipcMain.handle('audio:importData', (_e, projectId: string, name: string, data: ArrayBuffer) =>
     importAudioData(projectId, name, data)
+  )
+  ipcMain.handle('audio:saveAs', (e, url: string) =>
+    saveAudioAs(BrowserWindow.fromWebContents(e.sender), url)
   )
   ipcMain.handle('attachments:pick', (e, projectId: string) =>
     pickAttachments(BrowserWindow.fromWebContents(e.sender), projectId)

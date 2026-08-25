@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FolderOpen, X } from 'lucide-react'
+import { Download, FolderOpen, X } from 'lucide-react'
 import type { ImageAspectRatio } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog'
@@ -69,7 +69,24 @@ export function ImageEditor({
           <Button
             variant="secondary"
             size="icon"
+            className="absolute left-1.5 top-1.5 size-6 shadow-sm"
+            title="Save a copy…"
+            onPointerDown={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+            onClick={(event) => {
+              event.stopPropagation()
+              void window.api.saveImageAs(current)
+            }}
+          >
+            <Download />
+          </Button>
+          <Button
+            variant="secondary"
+            size="icon"
             className="absolute right-1.5 top-1.5 size-6 shadow-sm"
+            title="Remove"
             onClick={() => onChange(undefined)}
           >
             <X />

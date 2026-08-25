@@ -4,8 +4,23 @@ import { basename, extname, join } from 'path'
 import { pathToFileURL } from 'url'
 import { randomUUID } from 'crypto'
 import { projectDir, SAFE_ID } from './storage'
+import { saveMediaAs } from './saveMedia'
 
 export const imagesDir = (projectId: string): string => join(projectDir(projectId), 'images')
+function imagePath(url: string): string | null {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return null
+  }
+  if (parsed.protocol !== 'app-image:') return null
+  const [projectId, rawName] = decodeURIComponent(parsed.pathname).split('/').filter(Boolean)
+  const name = rawName ? basename(rawName) : ''
+  if (!projectId || !SAFE_ID.test(projectId) || !name || name.startsWith('.')) return null
+  return join(imagesDir(projectId), name)
+}
+
 
 async function copyIntoImages(projectId: string, source: string): Promise<string> {
   const dir = imagesDir(projectId)
@@ -26,6 +41,10 @@ export async function pickImage(win: BrowserWindow | null, projectId: string): P
   if (result.canceled || !source) return null
   return copyIntoImages(projectId, source)
 }
+export async function saveImageAs(win: BrowserWindow | null, url: string): Promise<boolean> {
+  return saveMediaAs(win, url, imagePath(url), 'image')
+}
+
 
 /**
  * Imports raw file bytes (e.g. dropped from the OS file manager). Takes bytes
@@ -55,12 +74,8 @@ export async function importImageData(
 // so the renderer can display locally stored images without loosening webSecurity.
 export function registerImageProtocol(): void {
   protocol.handle('app-image', (request) => {
-    const pathname = decodeURIComponent(new URL(request.url).pathname)
-    const [projectId, rawName] = pathname.split('/').filter(Boolean)
-    const name = rawName ? basename(rawName) : ''
-    if (!projectId || !SAFE_ID.test(projectId) || !name || name.startsWith('.')) {
-      return new Response(null, { status: 400 })
-    }
-    return net.fetch(pathToFileURL(join(imagesDir(projectId), name)).toString())
+    const path = imagePath(request.url)
+    if (!path) return new Response(null, { status: 400 })
+    return net.fetch(pathToFileURL(path).toString())
   })
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FolderOpen, X } from 'lucide-react'
+import { Download, FolderOpen, X } from 'lucide-react'
 import { AudioPlayer } from '@/components/AudioPlayer'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -44,11 +44,28 @@ export function AudioEditor({
     >
       {current && (
         <div className="relative flex items-center gap-1.5">
+          <Button
+            variant="secondary"
+            size="icon"
+            className="size-6 shrink-0 shadow-sm"
+            title="Save a copy…"
+            onPointerDown={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+            onClick={(event) => {
+              event.stopPropagation()
+              void window.api.saveAudioAs(current)
+            }}
+          >
+            <Download />
+          </Button>
           <AudioPlayer src={current} className="min-w-0 flex-1" />
           <Button
             variant="secondary"
             size="icon"
             className="size-6 shrink-0 shadow-sm"
+            title="Remove"
             onClick={() => onChange(undefined)}
           >
             <X />

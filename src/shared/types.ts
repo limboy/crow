@@ -315,6 +315,9 @@ export interface Api {
    *  them, so every picker/import call needs to know which project it's for. */
   pickImage: (projectId: string) => Promise<string | null>
   pickAudio: (projectId: string) => Promise<string | null>
+  /** Copies or downloads the current media file to a path the user picks. */
+  saveImageAs: (url: string) => Promise<boolean>
+  saveAudioAs: (url: string) => Promise<boolean>
   /** Lets the user pick one or more arbitrary files; null if cancelled. */
   pickAttachments: (projectId: string) => Promise<AttachmentValue[] | null>
   /** Writes dropped file bytes (e.g. from a drag-and-drop) into local storage. */

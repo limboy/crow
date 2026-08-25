@@ -16,6 +16,8 @@ const api: Api = {
   importCsv: () => ipcRenderer.invoke('csv:import'),
   pickImage: (projectId: string) => ipcRenderer.invoke('images:pick', projectId),
   pickAudio: (projectId: string) => ipcRenderer.invoke('audio:pick', projectId),
+  saveImageAs: (url: string) => ipcRenderer.invoke('images:saveAs', url),
+  saveAudioAs: (url: string) => ipcRenderer.invoke('audio:saveAs', url),
   pickAttachments: (projectId: string) => ipcRenderer.invoke('attachments:pick', projectId),
   importImageData: (projectId: string, name: string, data: ArrayBuffer) =>
     ipcRenderer.invoke('images:importData', projectId, name, data),
