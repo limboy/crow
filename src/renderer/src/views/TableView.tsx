@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
@@ -663,6 +664,8 @@ export function TableView({
                     groupId: `${view.id}:${field.id}`,
                     order: audioPlaylists.get(field.id)?.orderById.get(record.id) ?? 0,
                     total: audioPlaylists.get(field.id)?.ids.length ?? 0,
+                    autoPlayNext:
+                      config.audioPlayback?.[field.id]?.autoPlayNext ?? true,
                     repeatMode: config.audioPlayback?.[field.id]?.repeatMode ?? 'off',
                     shuffleMode: config.audioPlayback?.[field.id]?.shuffleMode ?? 'off',
                     requestPlay: (order) => requestAudioPlay(field.id, order),
@@ -804,53 +807,86 @@ export function TableView({
                         {field.type === 'audio' && (
                           <>
                             <DropdownMenuSeparator />
-                            <DropdownMenuSub>
-                              <DropdownMenuSubTrigger>Repeat mode</DropdownMenuSubTrigger>
-                              <DropdownMenuSubContent>
-                                <DropdownMenuRadioGroup
-                                  value={config.audioPlayback?.[field.id]?.repeatMode ?? 'off'}
-                                  onValueChange={(next) =>
-                                    patchConfig({
-                                      audioPlayback: {
-                                        ...config.audioPlayback,
-                                        [field.id]: {
-                                          repeatMode: next as AudioRepeatMode,
-                                          shuffleMode:
-                                            config.audioPlayback?.[field.id]?.shuffleMode ?? 'off'
-                                        }
-                                      }
-                                    })
+                            <DropdownMenuCheckboxItem
+                              checked={
+                                config.audioPlayback?.[field.id]?.autoPlayNext ?? true
+                              }
+                              onCheckedChange={(checked) =>
+                                patchConfig({
+                                  audioPlayback: {
+                                    ...config.audioPlayback,
+                                    [field.id]: {
+                                      autoPlayNext: checked === true,
+                                      repeatMode:
+                                        config.audioPlayback?.[field.id]?.repeatMode ?? 'off',
+                                      shuffleMode:
+                                        config.audioPlayback?.[field.id]?.shuffleMode ?? 'off'
+                                    }
                                   }
-                                >
-                                  <DropdownMenuRadioItem value="off">Off</DropdownMenuRadioItem>
-                                  <DropdownMenuRadioItem value="one">One</DropdownMenuRadioItem>
-                                  <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
-                                </DropdownMenuRadioGroup>
-                              </DropdownMenuSubContent>
-                            </DropdownMenuSub>
-                            <DropdownMenuSub>
-                              <DropdownMenuSubTrigger>Shuffle mode</DropdownMenuSubTrigger>
-                              <DropdownMenuSubContent>
-                                <DropdownMenuRadioGroup
-                                  value={config.audioPlayback?.[field.id]?.shuffleMode ?? 'off'}
-                                  onValueChange={(next) =>
-                                    patchConfig({
-                                      audioPlayback: {
-                                        ...config.audioPlayback,
-                                        [field.id]: {
-                                          repeatMode:
-                                            config.audioPlayback?.[field.id]?.repeatMode ?? 'off',
-                                          shuffleMode: next as AudioShuffleMode
-                                        }
+                                })
+                              }
+                            >
+                              Auto-play next
+                            </DropdownMenuCheckboxItem>
+                            {(config.audioPlayback?.[field.id]?.autoPlayNext ?? true) && (
+                              <>
+                                <DropdownMenuSub>
+                                  <DropdownMenuSubTrigger>Repeat mode</DropdownMenuSubTrigger>
+                                  <DropdownMenuSubContent>
+                                    <DropdownMenuRadioGroup
+                                      value={
+                                        config.audioPlayback?.[field.id]?.repeatMode ?? 'off'
                                       }
-                                    })
-                                  }
-                                >
-                                  <DropdownMenuRadioItem value="off">Off</DropdownMenuRadioItem>
-                                  <DropdownMenuRadioItem value="on">On</DropdownMenuRadioItem>
-                                </DropdownMenuRadioGroup>
-                              </DropdownMenuSubContent>
-                            </DropdownMenuSub>
+                                      onValueChange={(next) =>
+                                        patchConfig({
+                                          audioPlayback: {
+                                            ...config.audioPlayback,
+                                            [field.id]: {
+                                              autoPlayNext: true,
+                                              repeatMode: next as AudioRepeatMode,
+                                              shuffleMode:
+                                                config.audioPlayback?.[field.id]?.shuffleMode ??
+                                                'off'
+                                            }
+                                          }
+                                        })
+                                      }
+                                    >
+                                      <DropdownMenuRadioItem value="off">Off</DropdownMenuRadioItem>
+                                      <DropdownMenuRadioItem value="one">One</DropdownMenuRadioItem>
+                                      <DropdownMenuRadioItem value="all">All</DropdownMenuRadioItem>
+                                    </DropdownMenuRadioGroup>
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuSub>
+                                <DropdownMenuSub>
+                                  <DropdownMenuSubTrigger>Shuffle mode</DropdownMenuSubTrigger>
+                                  <DropdownMenuSubContent>
+                                    <DropdownMenuRadioGroup
+                                      value={
+                                        config.audioPlayback?.[field.id]?.shuffleMode ?? 'off'
+                                      }
+                                      onValueChange={(next) =>
+                                        patchConfig({
+                                          audioPlayback: {
+                                            ...config.audioPlayback,
+                                            [field.id]: {
+                                              autoPlayNext: true,
+                                              repeatMode:
+                                                config.audioPlayback?.[field.id]?.repeatMode ??
+                                                'off',
+                                              shuffleMode: next as AudioShuffleMode
+                                            }
+                                          }
+                                        })
+                                      }
+                                    >
+                                      <DropdownMenuRadioItem value="off">Off</DropdownMenuRadioItem>
+                                      <DropdownMenuRadioItem value="on">On</DropdownMenuRadioItem>
+                                    </DropdownMenuRadioGroup>
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuSub>
+                              </>
+                            )}
                           </>
                         )}
                         <DropdownMenuSeparator />

@@ -111,6 +111,7 @@ export type RowHeight = 'short' | 'medium' | 'tall'
 export type AudioRepeatMode = 'off' | 'one' | 'all'
 export type AudioShuffleMode = 'off' | 'on'
 export interface AudioPlaybackConfig {
+  autoPlayNext: boolean
   repeatMode: AudioRepeatMode
   shuffleMode: AudioShuffleMode
 }
@@ -152,7 +153,7 @@ export interface TableViewConfig extends ViewRules {
   columnWidths?: Record<string, number>
   /** Summary shown in the bottom bar per field id; unset (or `none`) shows nothing. */
   summaries?: Record<string, SummaryKey>
-  /** Playlist behavior per audio field; unset uses ordered, non-repeating playback. */
+  /** Playlist behavior per audio field; unset auto-plays in order without repeating. */
   audioPlayback?: Record<string, AudioPlaybackConfig>
 }
 

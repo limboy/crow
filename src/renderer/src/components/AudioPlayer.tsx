@@ -24,6 +24,7 @@ export interface AudioPlayback {
   order: number
   /** How many playable cells the column has, mounted or not. */
   total: number
+  autoPlayNext: boolean
   repeatMode: AudioRepeatMode
   shuffleMode: AudioShuffleMode
   /** Asks the view to show `order`'s row and start its player. */
@@ -80,6 +81,10 @@ function playFromStart(audio: HTMLAudioElement): void {
 }
 
 function beginPlaylistSession(playback: AudioPlayback): void {
+  if (!playback.autoPlayNext) {
+    playlists.delete(playback.groupId)
+    return
+  }
   const state = playlistState(playback.groupId)
   if (state.next === playback.order) {
     state.next = undefined
@@ -90,6 +95,10 @@ function beginPlaylistSession(playback: AudioPlayback): void {
 }
 
 function advancePlaylist(audio: HTMLAudioElement, playback: AudioPlayback): void {
+  if (!playback.autoPlayNext) {
+    playlists.delete(playback.groupId)
+    return
+  }
   const state = playlistState(playback.groupId)
 
   if (playback.repeatMode === 'one') {

@@ -185,7 +185,11 @@ function normalizeAudioPlayback(value: unknown): TableViewConfig['audioPlayback'
           : 'off'
     const shuffleMode =
       entry.shuffleMode === 'on' || entry.shuffle === true ? 'on' : 'off'
-    normalized[fieldId] = { repeatMode, shuffleMode }
+    normalized[fieldId] = {
+      autoPlayNext: entry.autoPlayNext !== false,
+      repeatMode,
+      shuffleMode
+    }
   }
   return Object.keys(normalized).length > 0 ? normalized : undefined
 }
