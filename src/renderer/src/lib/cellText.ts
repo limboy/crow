@@ -1,5 +1,6 @@
 import type { Field, SelectChoice, Table } from '@shared/types'
 import {
+  attachmentsFrom,
   choiceById,
   choicesByIds,
   dateValueParts,
@@ -44,6 +45,10 @@ export function cellToText(field: Field, value: unknown, tables: Table[] = []): 
         .map((record) => recordLabel(target, record))
         .join(LIST_SEPARATOR)
     }
+    case 'attachment':
+      return attachmentsFrom(value)
+        .map((a) => a.name)
+        .join(LIST_SEPARATOR)
     // Dates are stored as `yyyy-MM-dd` / `yyyy-MM-ddTHH:mm` already, and image/audio as the url
     // they resolve through, so both are their own text form.
     default:
@@ -205,6 +210,10 @@ export function parseCellText(field: Field, raw: string, ctx: ParseContext): Par
     case 'audio':
       // Only a url means anything here; free text would just break the cell.
       return /^(https?|app-image|app-audio):/i.test(text) ? { value: text } : null
+    case 'attachment':
+      // Files come from the picker or a drop, which carry real bytes; typed
+      // text can't produce that, so pasting into this column is a no-op.
+      return null
   }
 }
 

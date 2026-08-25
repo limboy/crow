@@ -10,13 +10,13 @@
  * command reference.
  */
 import { promises as fs, existsSync, readFileSync } from 'fs'
-import { join, extname } from 'path'
+import { join, extname, basename } from 'path'
 import { homedir } from 'os'
 import { randomUUID } from 'crypto'
 
 const SAFE_ID = /^[a-zA-Z0-9-]+$/
 
-const FIELD_TYPES = ['text', 'number', 'select', 'multiSelect', 'date', 'checkbox', 'url', 'image', 'audio', 'relation', 'rating']
+const FIELD_TYPES = ['text', 'number', 'select', 'multiSelect', 'date', 'checkbox', 'url', 'image', 'audio', 'relation', 'rating', 'attachment']
 
 const CHOICE_COLORS = ['gray', 'red', 'orange', 'amber', 'green', 'teal', 'blue', 'indigo', 'purple', 'pink']
 
@@ -66,6 +66,7 @@ const projectDir = (id) => join(projectsRootDir(), id)
 const projectFile = (id) => join(projectDir(id), 'data.json')
 const imagesDir = (id) => join(projectDir(id), 'images')
 const audioDir = (id) => join(projectDir(id), 'audio')
+const attachmentsDir = (id) => join(projectDir(id), 'attachments')
 
 // ---------------------------------------------------------------------------
 // Storage (same format + atomic write strategy as the app)
@@ -347,6 +348,40 @@ async function coerceValue(field, value, project) {
       const name = `${uuid()}${extname(str).toLowerCase() || '.mp3'}`
       await fs.copyFile(str, join(audioDir(projectId), name))
       return `app-audio:///${projectId}/${name}`
+    }
+    case 'attachment': {
+      const items = Array.isArray(value) ? value : [value]
+      // Every item is resolved before any of them is copied. Failing halfway
+      // through would exit with files already written into the store that no
+      // record points at, and nothing ever collects those but the app's own
+      // sweep — a day later, at best.
+      const plan = items.map((item) => {
+        // Already a stored reference (e.g. read back from another record) —
+        // keep it, and whatever name it already carries.
+        if (item && typeof item === 'object' && typeof item.url === 'string') {
+          return { keep: { url: item.url, name: item.name ?? basename(item.url), size: item.size } }
+        }
+        const str = String(item)
+        if (str.startsWith('app-attachment://')) return { keep: { url: str, name: basename(str) } }
+        if (!existsSync(str)) {
+          fail(`Field "${field.name}" expects a local file path, app-attachment:// URL, or {url,name} object, got ${JSON.stringify(item)}`)
+        }
+        return { source: str }
+      })
+      const attachments = []
+      for (const step of plan) {
+        if (step.keep) {
+          attachments.push(step.keep)
+          continue
+        }
+        await fs.mkdir(attachmentsDir(projectId), { recursive: true })
+        const originalName = basename(step.source)
+        const name = `${uuid()}${extname(step.source)}`
+        await fs.copyFile(step.source, join(attachmentsDir(projectId), name))
+        const stat = await fs.stat(join(attachmentsDir(projectId), name))
+        attachments.push({ url: `app-attachment:///${projectId}/${name}`, name: originalName, size: stat.size })
+      }
+      return attachments
     }
   }
   return value
@@ -774,6 +809,13 @@ VALUE FORMATS (per field type, when writing)
                 or an existing app-image:/// URL
   audio         path to a local audio file (copied into the app's storage),
                 or an existing app-audio:/// URL
+  attachment    array of local file paths (each copied into the app's storage) —
+                a single path is accepted for one file. Also takes a {url,name}
+                object exactly as read back, which is how you move an existing
+                attachment between records. A bare app-attachment:/// URL works
+                too, but the app only stores files under generated ids, so the
+                original file name can't be recovered from one: pass the
+                {url,name} object to keep the name and size.
   null          clears the field (any type)
 
 EXAMPLES

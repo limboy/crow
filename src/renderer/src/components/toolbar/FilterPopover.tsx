@@ -257,6 +257,7 @@ function FilterValueInput({
     case 'checkbox':
     case 'image':
     case 'audio':
+    case 'attachment':
       return null
     default:
       return (

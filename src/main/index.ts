@@ -1,8 +1,10 @@
 import { app, BrowserWindow, Menu, protocol, shell } from 'electron'
 import { join } from 'path'
+import { pathToFileURL } from 'url'
 import { registerIpc } from './ipc'
 import { registerImageProtocol } from './images'
 import { registerAudioProtocol } from './audio'
+import { registerAttachmentProtocol } from './attachments'
 import { seedIfEmpty } from './seed'
 import { watchProjects } from './watcher'
 import { initAutoUpdater } from './updater'
@@ -10,7 +12,8 @@ import { buildAppMenu } from './menu'
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app-image', privileges: { secure: true, supportFetchAPI: true, stream: true } },
-  { scheme: 'app-audio', privileges: { secure: true, supportFetchAPI: true, stream: true } }
+  { scheme: 'app-audio', privileges: { secure: true, supportFetchAPI: true, stream: true } },
+  { scheme: 'app-attachment', privileges: { secure: true, supportFetchAPI: true, stream: true } }
 ])
 
 const iconPath = join(__dirname, '../../build/icon.png')
@@ -38,11 +41,22 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  const devUrl = !app.isPackaged ? process.env['ELECTRON_RENDERER_URL'] : undefined
+  const appUrl = devUrl ?? pathToFileURL(join(__dirname, '../renderer/index.html')).toString()
+
+  // The preload — and with it the whole `window.api` bridge — attaches to
+  // whatever this window loads, in any frame. So nothing but the app's own
+  // document may ever become a navigation here: an imported .crow can carry an
+  // arbitrary html file as an attachment, and rendering that in this window
+  // would hand it read/write access to every project. Anything else is a link
+  // the user meant to follow, which belongs to the browser.
+  win.webContents.on('will-navigate', (e, url) => {
+    if (url.startsWith(appUrl)) return
+    e.preventDefault()
+    if (url.startsWith('http://') || url.startsWith('https://')) shell.openExternal(url)
+  })
+
+  win.loadURL(appUrl)
 }
 
 app.whenReady().then(async () => {
@@ -53,6 +67,7 @@ app.whenReady().then(async () => {
 
   registerImageProtocol()
   registerAudioProtocol()
+  registerAttachmentProtocol()
   registerIpc()
   await seedIfEmpty()
   watchProjects()

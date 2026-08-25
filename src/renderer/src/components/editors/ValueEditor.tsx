@@ -11,6 +11,7 @@ import { useProjectTables, useRelationTable } from '@/lib/relations'
 import { ChoiceBadge } from '@/components/ChoiceBadge'
 import { RatingStars } from '@/components/RatingStars'
 import { RecordBadge } from '@/components/RecordBadge'
+import { AttachmentEditor } from './AttachmentEditor'
 import { AudioEditor } from './AudioEditor'
 import { DateEditor } from './DateEditor'
 import { ImageEditor } from './ImageEditor'
@@ -85,6 +86,8 @@ export function ValueEditor({
       )
     case 'audio':
       return <AudioEditor projectId={projectId} value={value} onChange={onChange} />
+    case 'attachment':
+      return <AttachmentEditor projectId={projectId} value={value} onChange={onChange} />
     case 'rating':
       return (
         <div className="flex h-9 items-center">

@@ -7,10 +7,10 @@ A lite Airtable-style desktop app built with Electron. Create multiple projects,
 - **Table view** — show/hide fields, filter rules, multi-sort, group by field, inline cell editing
 - **Kanban view** — group by any single-select field, drag cards between columns
 - **Gallery view** — pick any image field as the card cover
-- **Field types** — text, number, single select, multi select, date, checkbox, URL, image (local file or URL), audio, link to records
+- **Field types** — text, number, single select, multi select, date, checkbox, URL, rating (1–5 stars), image (local file or URL), audio, attachment (any files, opened with the OS default app), link to records
 - **Linked records** — a `relation` field points a table's rows at rows in another table of the same project (Articles → Comments), single or multiple links per cell
 - **Multiple tables** — switch between a project's tables from the header; each keeps its own schema and views
-- **Import / export** — move a whole project (its tables, records, views, and images/audio) between machines as a single `.crow` file
+- **Import / export** — move a whole project (its tables, records, views, and every image, audio clip and attachment) between machines as a single `.crow` file
 
 ## Download
 
@@ -40,8 +40,9 @@ npm run build
 ## Import / export
 
 Right-click a project in the sidebar and choose **Export…** to write it to a
-single `.crow` file — plain JSON holding the project plus every image and audio
-file it owns, base64-encoded, so the export is self-contained. The **+** button
+single `.crow` file — a zip archive holding a plain-JSON `project.json` plus
+every image, audio clip and attachment it owns, each stored as itself, so the
+export is self-contained. Rename it to `.zip` to look inside. The **+** button
 above the project list offers **Import project…**, which reads a `.crow` file
 back in as a new project with a fresh id: importing the same file twice gives
 you two independent copies rather than overwriting anything.

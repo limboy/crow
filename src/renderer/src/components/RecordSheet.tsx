@@ -33,9 +33,12 @@ export function RecordSheet({
   const record = table.records.find((r) => r.id === recordId)
   const coverImage = viewCoverImage(view)
   const titleField = table.fields[0]
-  // Image/audio fields display as internal file paths (e.g. app-image:///...),
-  // which aren't meaningful as a record title.
-  const titleIsPath = titleField?.type === 'image' || titleField?.type === 'audio'
+  // Image/audio/attachment fields display as internal file paths (or a raw
+  // array), which aren't meaningful as a record title.
+  const titleIsPath =
+    titleField?.type === 'image' ||
+    titleField?.type === 'audio' ||
+    titleField?.type === 'attachment'
   const title =
     record && titleField && !titleIsPath
       ? displayValue(titleField, record.values[titleField.id], tables)

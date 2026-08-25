@@ -6,6 +6,7 @@ import {
   Hash,
   Image as ImageIcon,
   Link2,
+  Paperclip,
   SquareCheck,
   Star,
   Tags,
@@ -13,6 +14,7 @@ import {
   type LucideIcon
 } from 'lucide-react'
 import type {
+  AttachmentValue,
   ChoiceColor,
   Field,
   FieldType,
@@ -39,6 +41,7 @@ export const FIELD_TYPES: FieldTypeInfo[] = [
   { type: 'url', label: 'URL', icon: Link2 },
   { type: 'image', label: 'Image', icon: ImageIcon },
   { type: 'audio', label: 'Audio', icon: AudioLines },
+  { type: 'attachment', label: 'Attachment', icon: Paperclip },
   { type: 'relation', label: 'Link to records', icon: Waypoints }
 ]
 
@@ -136,10 +139,40 @@ export function linkedRecords(field: Field, value: unknown, tables: Table[]): Re
 export function recordLabel(table: Table, record: RecordRow): string {
   const primary = table.fields[0]
   // Image/audio fields display as internal file paths (e.g. app-image:///...),
-  // which aren't meaningful as a record label.
-  const showable = primary && primary.type !== 'image' && primary.type !== 'audio'
+  // and attachment as a raw array, neither meaningful as a record label.
+  const showable =
+    primary &&
+    primary.type !== 'image' &&
+    primary.type !== 'audio' &&
+    primary.type !== 'attachment'
   const text = showable ? displayValue(primary, record.values[primary.id]) : ''
   return text || 'Untitled'
+}
+
+/** An `attachment` cell's well-formed files, filtering out anything that
+ *  doesn't have the shape a real attachment value would. */
+export function attachmentsFrom(value: unknown): AttachmentValue[] {
+  if (!Array.isArray(value)) return []
+  return value.filter(
+    (v): v is AttachmentValue =>
+      typeof v === 'object' &&
+      v !== null &&
+      typeof (v as AttachmentValue).url === 'string' &&
+      typeof (v as AttachmentValue).name === 'string'
+  )
+}
+
+/** Human-readable file size, e.g. `1.4 MB`. */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit++
+  }
+  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`
 }
 
 export function isEmptyValue(field: Field, value: unknown): boolean {
@@ -149,6 +182,7 @@ export function isEmptyValue(field: Field, value: unknown): boolean {
       return value !== true
     case 'multiSelect':
     case 'relation':
+    case 'attachment':
       return !Array.isArray(value) || value.length === 0
     case 'select':
       return choiceById(field, value) === undefined
@@ -210,6 +244,10 @@ export function displayValue(field: Field, value: unknown, tables: Table[] = [])
     case 'number':
     case 'rating':
       return String(value)
+    case 'attachment':
+      return attachmentsFrom(value)
+        .map((a) => a.name)
+        .join(', ')
     case 'date': {
       const parts = dateValueParts(value)
       if (!parts) return String(value)
@@ -291,6 +329,7 @@ export function operatorsFor(field: Field): OperatorInfo[] {
       ]
     case 'image':
     case 'audio':
+    case 'attachment':
       return isEmptyOps
   }
 }

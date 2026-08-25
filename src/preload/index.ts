@@ -16,10 +16,16 @@ const api: Api = {
   importCsv: () => ipcRenderer.invoke('csv:import'),
   pickImage: (projectId: string) => ipcRenderer.invoke('images:pick', projectId),
   pickAudio: (projectId: string) => ipcRenderer.invoke('audio:pick', projectId),
+  pickAttachments: (projectId: string) => ipcRenderer.invoke('attachments:pick', projectId),
   importImageData: (projectId: string, name: string, data: ArrayBuffer) =>
     ipcRenderer.invoke('images:importData', projectId, name, data),
   importAudioData: (projectId: string, name: string, data: ArrayBuffer) =>
     ipcRenderer.invoke('audio:importData', projectId, name, data),
+  importAttachmentData: (projectId: string, name: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke('attachments:importData', projectId, name, data),
+  openAttachment: (url: string) => ipcRenderer.invoke('attachments:open', url),
+  saveAttachmentAs: (url: string, name: string) =>
+    ipcRenderer.invoke('attachments:saveAs', url, name),
   onProjectsChanged: (callback: () => void) => {
     const listener = (): void => callback()
     ipcRenderer.on('projects:changed', listener)

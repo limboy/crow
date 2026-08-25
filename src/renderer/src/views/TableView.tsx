@@ -45,6 +45,7 @@ import {
   ViewFindControl,
   type ViewFindController
 } from '@/components/ViewFind'
+import { AttachmentEditor } from '@/components/editors/AttachmentEditor'
 import { AudioEditor } from '@/components/editors/AudioEditor'
 import { DateEditor } from '@/components/editors/DateEditor'
 import { ImageEditor } from '@/components/editors/ImageEditor'
@@ -61,7 +62,7 @@ import * as ops from '@/lib/ops'
 import { useProjectTables } from '@/lib/relations'
 import type { TableUpdater } from '@/lib/queries'
 import { rowHeightInfo, type RowHeightInfo } from '@/lib/rowHeight'
-import { useFileDrop } from '@/lib/useFileDrop'
+import { useAttachmentDrop, useFileDrop } from '@/lib/useFileDrop'
 import { useGridClipboard } from '@/lib/useGridClipboard'
 import { cn } from '@/lib/utils'
 
@@ -416,7 +417,9 @@ export function TableView({
     window.addEventListener('mouseup', onUp)
   }
 
-  const groupableFields = table.fields.filter((f) => f.type !== 'image' && f.type !== 'audio')
+  const groupableFields = table.fields.filter(
+    (f) => f.type !== 'image' && f.type !== 'audio' && f.type !== 'attachment'
+  )
   const heightInfo = rowHeightInfo(config.rowHeight)
 
   let rowNumber = 0
@@ -943,8 +946,10 @@ function CellContent({
     field.type === 'relation' && Array.isArray(value) && value.length > 1
   const anchorRef = useRef<HTMLDivElement>(null)
   const editFinishedRef = useRef(false)
-  const isFileField = field.type === 'image' || field.type === 'audio'
+  const isFileField = field.type === 'image' || field.type === 'audio' || field.type === 'attachment'
   const fileDrop = useFileDrop(field.type === 'audio' ? 'audio' : 'image', projectId, onChange)
+  const attachmentDrop = useAttachmentDrop(projectId, value, onChange)
+  const activeFileDrop = field.type === 'attachment' ? attachmentDrop : fileDrop
 
   useEffect(() => {
     if (!editing || !['text', 'number', 'url'].includes(field.type)) return
@@ -996,6 +1001,7 @@ function CellContent({
     field.type === 'date' ||
     field.type === 'image' ||
     field.type === 'audio' ||
+    field.type === 'attachment' ||
     field.type === 'relation'
   ) {
     return (
@@ -1010,15 +1016,15 @@ function CellContent({
             wrap ? 'flex-wrap content-start items-start gap-1 py-1.5' : 'items-center',
             !wrap && hasMultipleRelationRecords && 'py-1.5',
             selected && !editing && 'ring-2 ring-inset ring-ring',
-            isFileField && fileDrop.isOver && 'bg-accent ring-2 ring-inset ring-primary'
+            isFileField && activeFileDrop.isOver && 'bg-accent ring-2 ring-inset ring-primary'
           )}
           onClick={onSelect}
           onDoubleClick={() => onEdit()}
           {...(isFileField
             ? {
-                onDragOver: fileDrop.onDragOver,
-                onDragLeave: fileDrop.onDragLeave,
-                onDrop: fileDrop.onDrop
+                onDragOver: activeFileDrop.onDragOver,
+                onDragLeave: activeFileDrop.onDragLeave,
+                onDrop: activeFileDrop.onDrop
               }
             : undefined)}
         >
@@ -1032,7 +1038,7 @@ function CellContent({
         <PopoverContent
           className={cn(
             'p-0',
-            field.type === 'image' || field.type === 'audio'
+            field.type === 'image' || field.type === 'audio' || field.type === 'attachment'
               ? 'w-72 p-3'
               : field.type === 'date' || field.type === 'relation'
                 ? 'w-64'
@@ -1048,6 +1054,8 @@ function CellContent({
             <ImageEditor projectId={projectId} value={value} onChange={onChange} />
           ) : field.type === 'audio' ? (
             <AudioEditor projectId={projectId} value={value} onChange={onChange} />
+          ) : field.type === 'attachment' ? (
+            <AttachmentEditor projectId={projectId} value={value} onChange={onChange} />
           ) : field.type === 'relation' ? (
             <RelationEditor
               field={field}

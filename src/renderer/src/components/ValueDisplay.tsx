@@ -1,6 +1,7 @@
-import { Check } from 'lucide-react'
+import { Check, Paperclip } from 'lucide-react'
 import type { Field } from '@shared/types'
 import {
+  attachmentsFrom,
   choiceById,
   choicesByIds,
   displayValue,
@@ -122,6 +123,29 @@ export function ValueDisplay({
       )
     case 'rating':
       return <RatingStars value={value as number} className={className} />
+    case 'attachment':
+      return (
+        <span className={cn('flex flex-wrap items-center gap-1', className)}>
+          {attachmentsFrom(value).map((file, i) => (
+            <button
+              key={`${file.url}-${i}`}
+              type="button"
+              // Opened through the main process rather than linked to: a
+              // navigation to an `app-attachment:` url would run the preload
+              // against the file's own contents.
+              onClick={(e) => {
+                e.stopPropagation()
+                void window.api.openAttachment(file.url)
+              }}
+              title={file.name}
+              className="inline-flex max-w-full items-center gap-1 truncate rounded-md bg-neutral-100 px-1.5 py-0.5 text-xs font-medium text-neutral-700 hover:underline dark:bg-neutral-800 dark:text-neutral-300"
+            >
+              <Paperclip className="size-3 shrink-0" />
+              <span className="truncate">{file.name}</span>
+            </button>
+          ))}
+        </span>
+      )
     default:
       return <span className={cn(wrapClass, className)}>{displayValue(field, value, tables)}</span>
   }

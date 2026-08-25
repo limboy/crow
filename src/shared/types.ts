@@ -10,6 +10,7 @@ export type FieldType =
   | 'audio'
   | 'relation'
   | 'rating'
+  | 'attachment'
 
 export type ChoiceColor =
   | 'gray'
@@ -49,6 +50,26 @@ export interface Field {
   }
   /** Only on `relation` fields: which table this one links to. */
   relation?: RelationOptions
+}
+
+/** Ceiling on one attachment imported by drag-and-drop. That path carries the
+ *  file's bytes through renderer memory, the IPC structured clone and a Buffer
+ *  in the main process — roughly three copies at once — so it needs a limit.
+ *  The file picker copies on disk instead and isn't bound by it. */
+export const MAX_ATTACHMENT_BYTES = 256 * 1024 * 1024
+
+/** One file attached to an `attachment` cell — a cell holds an array of these.
+ *  `url` is always an `app-attachment:///<projectId>/<file>` url: unlike
+ *  `image`/`audio`, an attachment is only ever a file the app has copied into
+ *  its own store, since it is handed to the OS to open rather than rendered.
+ *  The on-disk file is stored under a generated name, so `name` keeps the
+ *  original file name for display. */
+export interface AttachmentValue {
+  url: string
+  name: string
+  /** Bytes, when known — absent only for a url written by hand into a
+   *  project file rather than imported through the app or CLI. */
+  size?: number
 }
 
 export interface RecordRow {
@@ -201,21 +222,32 @@ export interface LegacyProject {
   views: View[]
 }
 
-/** One image/audio file carried inside an exported bundle, base64-encoded. */
+/** Where an asset sits inside a `.crow` archive, and which project folder it
+ *  is restored to. The archive mirrors the project's own layout. */
+export type ProjectAssetKind = 'image' | 'audio' | 'attachment'
+
+/** One image/audio file carried inside a version ≤2 export, base64-encoded.
+ *  Archives store the bytes as their own entries instead. */
 export interface ProjectBundleAsset {
-  kind: 'image' | 'audio'
+  kind: ProjectAssetKind
   /** Bare file name as stored in the project's `images/`/`audio/` folder. */
   name: string
   data: string
 }
 
-/** A whole project — schema, records, views, and its local media — in one
- *  self-contained JSON file (`.crow`), so it can be shared or backed up. */
-export interface ProjectBundle {
+/** `project.json` inside a `.crow` archive: the schema, records and views, but
+ *  none of the bytes. Images, audio and attachments are separate entries in the
+ *  archive, stored as themselves. */
+export interface ProjectManifest {
   format: 'crow-project'
   version: number
   exportedAt: string
   project: Project
+}
+
+/** A version ≤2 export: one JSON document with every asset base64'd into it.
+ *  Still read on import, never written — see `docs/crow-format.md`. */
+export interface LegacyProjectBundle extends ProjectManifest {
   assets: ProjectBundleAsset[]
 }
 
@@ -245,6 +277,9 @@ export interface ConfirmDialogOptions {
   cancelLabel?: string
   /** Styles the dialog as a warning and puts Cancel first/default, matching native destructive-confirm prompts. */
   destructive?: boolean
+  /** Shows a single dismiss button rather than a confirm/cancel pair, for
+   *  something the user can only acknowledge. Always resolves false. */
+  alert?: boolean
 }
 
 /** A CSV file read in from disk, ready to be parsed by the renderer. */
@@ -276,13 +311,27 @@ export interface Api {
   /** Reads a CSV/TSV file the user picks as raw text — the renderer parses it,
    *  since the clipboard needs the same parser; null if cancelled. */
   importCsv: () => Promise<CsvFile | null>
-  /** Images and audio are stored alongside the project that owns them, so
-   *  every picker/import call needs to know which project it's for. */
+  /** Images, audio and attachments are stored alongside the project that owns
+   *  them, so every picker/import call needs to know which project it's for. */
   pickImage: (projectId: string) => Promise<string | null>
   pickAudio: (projectId: string) => Promise<string | null>
+  /** Lets the user pick one or more arbitrary files; null if cancelled. */
+  pickAttachments: (projectId: string) => Promise<AttachmentValue[] | null>
   /** Writes dropped file bytes (e.g. from a drag-and-drop) into local storage. */
   importImageData: (projectId: string, name: string, data: ArrayBuffer) => Promise<string | null>
   importAudioData: (projectId: string, name: string, data: ArrayBuffer) => Promise<string | null>
+  importAttachmentData: (
+    projectId: string,
+    name: string,
+    data: ArrayBuffer
+  ) => Promise<AttachmentValue | null>
+  /** Opens a stored attachment with the OS default app. The renderer must not
+   *  link to `app-attachment:` urls directly — a top-level navigation to one
+   *  would run the preload against that file's contents. False if the url
+   *  doesn't name a stored file, or the OS refused to open it. */
+  openAttachment: (url: string) => Promise<boolean>
+  /** Copies a stored attachment out to a path the user picks; false if cancelled. */
+  saveAttachmentAs: (url: string, name: string) => Promise<boolean>
   /** Fires when project files change on disk outside the app; returns unsubscribe. */
   onProjectsChanged: (callback: () => void) => () => void
   /** Version of an already-downloaded update ready to install, if any. */

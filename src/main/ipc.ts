@@ -5,6 +5,12 @@ import { importImageData, pickImage } from './images'
 import { exportProject, importProject } from './transfer'
 import { exportCsv, importCsv } from './csv'
 import { importAudioData, pickAudio } from './audio'
+import {
+  importAttachmentData,
+  openAttachment,
+  pickAttachments,
+  saveAttachmentAs
+} from './attachments'
 import { getReadyUpdateVersion, installReadyUpdate } from './updater'
 import { defaultDataDir, getDataDir, setDataDir } from './config'
 import { watchProjects } from './watcher'
@@ -35,6 +41,16 @@ export function registerIpc(): void {
   ipcMain.handle('audio:importData', (_e, projectId: string, name: string, data: ArrayBuffer) =>
     importAudioData(projectId, name, data)
   )
+  ipcMain.handle('attachments:pick', (e, projectId: string) =>
+    pickAttachments(BrowserWindow.fromWebContents(e.sender), projectId)
+  )
+  ipcMain.handle('attachments:importData', (_e, projectId: string, name: string, data: ArrayBuffer) =>
+    importAttachmentData(projectId, name, data)
+  )
+  ipcMain.handle('attachments:open', (_e, url: string) => openAttachment(url))
+  ipcMain.handle('attachments:saveAs', (e, url: string, name: string) =>
+    saveAttachmentAs(BrowserWindow.fromWebContents(e.sender), url, name)
+  )
   ipcMain.handle('updater:status', () => getReadyUpdateVersion())
   ipcMain.handle('updater:install', () => installReadyUpdate())
 
@@ -60,19 +76,37 @@ export function registerIpc(): void {
 
   ipcMain.handle('dialog:confirm', async (e, options: ConfirmDialogOptions) => {
     const win = BrowserWindow.fromWebContents(e.sender)
-    const { title, message, detail, confirmLabel = 'OK', cancelLabel = 'Cancel', destructive } = options
-    // Cancel first/default so Enter/Return never confirms a destructive action by accident.
-    const boxOptions = {
-      type: destructive ? ('warning' as const) : ('question' as const),
-      buttons: [cancelLabel, confirmLabel],
-      defaultId: 0,
-      cancelId: 0,
+    const {
       title,
       message,
-      detail
-    }
+      detail,
+      confirmLabel = 'OK',
+      cancelLabel = 'Cancel',
+      destructive,
+      alert
+    } = options
+    // Cancel first/default so Enter/Return never confirms a destructive action by accident.
+    const boxOptions = alert
+      ? {
+          type: destructive ? ('warning' as const) : ('info' as const),
+          buttons: [confirmLabel],
+          defaultId: 0,
+          cancelId: 0,
+          title,
+          message,
+          detail
+        }
+      : {
+          type: destructive ? ('warning' as const) : ('question' as const),
+          buttons: [cancelLabel, confirmLabel],
+          defaultId: 0,
+          cancelId: 0,
+          title,
+          message,
+          detail
+        }
     const result = win ? await dialog.showMessageBox(win, boxOptions) : await dialog.showMessageBox(boxOptions)
-    return result.response === 1
+    return !alert && result.response === 1
   })
 
   ipcMain.handle('settings:getDataDir', () => ({
