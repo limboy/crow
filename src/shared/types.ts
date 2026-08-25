@@ -9,6 +9,7 @@ export type FieldType =
   | 'image'
   | 'audio'
   | 'relation'
+  | 'rating'
 
 export type ChoiceColor =
   | 'gray'

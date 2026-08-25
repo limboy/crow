@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { choiceById, choicesByIds, displayValue, linkedRecords, recordLabel } from '@/lib/fields'
 import { useProjectTables, useRelationTable } from '@/lib/relations'
 import { ChoiceBadge } from '@/components/ChoiceBadge'
+import { RatingStars } from '@/components/RatingStars'
 import { RecordBadge } from '@/components/RecordBadge'
 import { AudioEditor } from './AudioEditor'
 import { DateEditor } from './DateEditor'
@@ -84,6 +85,16 @@ export function ValueEditor({
       )
     case 'audio':
       return <AudioEditor projectId={projectId} value={value} onChange={onChange} />
+    case 'rating':
+      return (
+        <div className="flex h-9 items-center">
+          <RatingStars
+            value={typeof value === 'number' ? value : 0}
+            onChange={onChange}
+            className="gap-1 [&_svg]:size-5"
+          />
+        </div>
+      )
   }
 }
 

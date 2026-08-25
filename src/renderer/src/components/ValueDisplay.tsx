@@ -13,6 +13,7 @@ import { useProjectTables } from '@/lib/relations'
 import { cn } from '@/lib/utils'
 import { AudioPlayer, type AudioPlayback } from './AudioPlayer'
 import { ChoiceBadge } from './ChoiceBadge'
+import { RatingStars } from './RatingStars'
 import { RecordBadge } from './RecordBadge'
 
 /** Read-only rendering of a record value, shared by table cells and cards. */
@@ -119,6 +120,8 @@ export function ValueDisplay({
           playback={audioPlayback}
         />
       )
+    case 'rating':
+      return <RatingStars value={value as number} className={className} />
     default:
       return <span className={cn(wrapClass, className)}>{displayValue(field, value, tables)}</span>
   }

@@ -5,6 +5,7 @@ import {
   dateValueParts,
   linkedRecords,
   nextChoiceColor,
+  RATING_MAX,
   recordLabel,
   relationTable
 } from './fields'
@@ -28,6 +29,7 @@ export function cellToText(field: Field, value: unknown, tables: Table[] = []): 
     case 'checkbox':
       return value === true ? 'true' : 'false'
     case 'number':
+    case 'rating':
       return typeof value === 'number' ? String(value) : ''
     case 'select':
       return choiceById(field, value)?.name ?? ''
@@ -141,6 +143,13 @@ export function parseCellText(field: Field, raw: string, ctx: ParseContext): Par
     case 'number': {
       const value = parseNumber(text)
       return value === undefined ? null : { value }
+    }
+    case 'rating': {
+      const value = parseNumber(text)
+      if (value === undefined || !Number.isInteger(value) || value < 1 || value > RATING_MAX) {
+        return null
+      }
+      return { value }
     }
     case 'date': {
       const value = parseDate(text)

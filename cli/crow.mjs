@@ -16,7 +16,7 @@ import { randomUUID } from 'crypto'
 
 const SAFE_ID = /^[a-zA-Z0-9-]+$/
 
-const FIELD_TYPES = ['text', 'number', 'select', 'multiSelect', 'date', 'checkbox', 'url', 'image', 'audio', 'relation']
+const FIELD_TYPES = ['text', 'number', 'select', 'multiSelect', 'date', 'checkbox', 'url', 'image', 'audio', 'relation', 'rating']
 
 const CHOICE_COLORS = ['gray', 'red', 'orange', 'amber', 'green', 'teal', 'blue', 'indigo', 'purple', 'pink']
 
@@ -264,6 +264,13 @@ async function coerceValue(field, value, project) {
       const num = Number(value)
       if (typeof value === 'boolean' || value === '' || Number.isNaN(num)) {
         fail(`Field "${field.name}" expects a number, got ${JSON.stringify(value)}`)
+      }
+      return num
+    }
+    case 'rating': {
+      const num = Number(value)
+      if (typeof value === 'boolean' || value === '' || !Number.isInteger(num) || num < 1 || num > 5) {
+        fail(`Field "${field.name}" expects a rating from 1 to 5, got ${JSON.stringify(value)}`)
       }
       return num
     }
@@ -755,6 +762,7 @@ COMMANDS
 VALUE FORMATS (per field type, when writing)
   text, url     string
   number        number (or numeric string)
+  rating        integer 1-5
   checkbox      true / false
   date          "YYYY-MM-DD" (all day) or "YYYY-MM-DDTHH:mm" (local time)
   select        choice name as string — unknown names are created automatically

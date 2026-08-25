@@ -7,6 +7,7 @@ import {
   Image as ImageIcon,
   Link2,
   SquareCheck,
+  Star,
   Tags,
   Waypoints,
   type LucideIcon
@@ -30,6 +31,7 @@ export interface FieldTypeInfo {
 export const FIELD_TYPES: FieldTypeInfo[] = [
   { type: 'text', label: 'Text', icon: AlignLeft },
   { type: 'number', label: 'Number', icon: Hash },
+  { type: 'rating', label: 'Rating', icon: Star },
   { type: 'select', label: 'Single select', icon: CircleChevronDown },
   { type: 'multiSelect', label: 'Multi select', icon: Tags },
   { type: 'date', label: 'Date', icon: CalendarDays },
@@ -39,6 +41,9 @@ export const FIELD_TYPES: FieldTypeInfo[] = [
   { type: 'audio', label: 'Audio', icon: AudioLines },
   { type: 'relation', label: 'Link to records', icon: Waypoints }
 ]
+
+/** Fixed 5-star scale for `rating` fields. */
+export const RATING_MAX = 5
 
 export function fieldTypeInfo(type: FieldType): FieldTypeInfo {
   return FIELD_TYPES.find((t) => t.type === type) ?? FIELD_TYPES[0]
@@ -148,6 +153,7 @@ export function isEmptyValue(field: Field, value: unknown): boolean {
     case 'select':
       return choiceById(field, value) === undefined
     case 'number':
+    case 'rating':
       return typeof value !== 'number'
     default:
       return typeof value !== 'string' || value.trim() === ''
@@ -202,6 +208,7 @@ export function displayValue(field: Field, value: unknown, tables: Table[] = [])
     case 'checkbox':
       return value === true ? 'Checked' : ''
     case 'number':
+    case 'rating':
       return String(value)
     case 'date': {
       const parts = dateValueParts(value)
@@ -244,6 +251,7 @@ export function operatorsFor(field: Field): OperatorInfo[] {
         ...isEmptyOps
       ]
     case 'number':
+    case 'rating':
       return [
         { value: 'is', label: '=', needsValue: true },
         { value: 'isNot', label: '≠', needsValue: true },

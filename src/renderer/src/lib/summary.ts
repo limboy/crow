@@ -40,6 +40,7 @@ const DATE_SUMMARIES: SummaryOption[] = [
 export function summaryOptions(field: Field): SummaryOption[] {
   switch (field.type) {
     case 'number':
+    case 'rating':
       return [...BASIC_SUMMARIES, ...NUMBER_SUMMARIES]
     case 'date':
       return [...BASIC_SUMMARIES, ...DATE_SUMMARIES]

@@ -11,7 +11,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { fieldTypeInfo, operatorsFor, recordLabel } from '@/lib/fields'
+import { fieldTypeInfo, operatorsFor, RATING_MAX, recordLabel } from '@/lib/fields'
 import { useRelationTable } from '@/lib/relations'
 import { ToolbarButton } from './ToolbarButton'
 
@@ -238,6 +238,18 @@ function FilterValueInput({
           type="number"
           className="h-8 text-sm"
           placeholder="Value"
+          value={typeof value === 'string' || typeof value === 'number' ? String(value) : ''}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )
+    case 'rating':
+      return (
+        <Input
+          type="number"
+          min={1}
+          max={RATING_MAX}
+          className="h-8 text-sm"
+          placeholder="Stars"
           value={typeof value === 'string' || typeof value === 'number' ? String(value) : ''}
           onChange={(e) => onChange(e.target.value)}
         />

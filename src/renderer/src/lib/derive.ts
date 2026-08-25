@@ -47,7 +47,8 @@ function matchesRule(record: RecordRow, rule: FilterRule, field: Field): boolean
       const has = linkedRecordIds(value).includes(String(target))
       return rule.operator === 'contains' ? has : !has
     }
-    case 'number': {
+    case 'number':
+    case 'rating': {
       if (typeof value !== 'number') return false
       const num = Number(target)
       if (Number.isNaN(num)) return true
@@ -135,6 +136,7 @@ function compareValues(a: RecordRow, b: RecordRow, field: Field, tables: Table[]
 
   switch (field.type) {
     case 'number':
+    case 'rating':
       return (va as number) - (vb as number)
     case 'checkbox':
       return (va === true ? 0 : 1) - (vb === true ? 0 : 1)

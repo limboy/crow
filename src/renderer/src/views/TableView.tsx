@@ -35,6 +35,7 @@ import {
 import { Popover, PopoverContent } from '@/components/ui/popover'
 import { ChoiceBadge } from '@/components/ChoiceBadge'
 import type { AudioPlayback } from '@/components/AudioPlayer'
+import { RatingStars } from '@/components/RatingStars'
 import { ValueDisplay } from '@/components/ValueDisplay'
 import { FieldDialog } from '@/components/FieldDialog'
 import { SummaryBar } from '@/components/SummaryBar'
@@ -243,6 +244,20 @@ export function TableView({
       event.preventDefault()
       update((project) =>
         ops.setRecordValue(project, record.id, field.id, record.values[field.id] !== true)
+      )
+      return
+    }
+
+    if (field.type === 'rating' && /^[1-5]$/.test(event.key)) {
+      event.preventDefault()
+      const rating = Number(event.key)
+      update((project) =>
+        ops.setRecordValue(
+          project,
+          record.id,
+          field.id,
+          record.values[field.id] === rating ? undefined : rating
+        )
       )
       return
     }
@@ -956,6 +971,20 @@ function CellContent({
           onClick={onSelect}
           onCheckedChange={(checked) => onChange(checked === true)}
         />
+      </div>
+    )
+  }
+
+  if (field.type === 'rating') {
+    return (
+      <div
+        data-grid-cell-control
+        role="button"
+        tabIndex={selected ? 0 : -1}
+        className={cn('flex h-full items-center px-2', selected && 'ring-2 ring-inset ring-ring')}
+        onClick={onSelect}
+      >
+        <RatingStars value={typeof value === 'number' ? value : 0} onChange={onChange} />
       </div>
     )
   }

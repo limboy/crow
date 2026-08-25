@@ -116,6 +116,7 @@ unique within the table works. Only the **project** id is constrained by the
 | `image` | an `app-image:///<projectId>/<file>` url, or any external `http(s)` url |
 | `audio` | an `app-audio:///<projectId>/<file>` url, or any external `http(s)` url |
 | `relation` | array of **record ids** from another table in the same project |
+| `rating` | integer 1–5 (a 5-star scale) |
 
 `select` and `multiSelect` fields carry their choices inline:
 
@@ -250,7 +251,7 @@ it. A table with no views opens on an empty state, so include at least one. Each
 | `groupByFieldId` | table, kanban | Kanban wants a `select` field — without one the board has nothing to lay out. |
 | `rowHeight` | table | `short` (default), `medium`, or `tall`. |
 | `columnWidths` | table | `{ "<fieldId>": 220 }` in pixels; unset fields use the default width. |
-| `summaries` | table | `{ "<fieldId>": "sum" }` — the statistic that field's cell shows in the bottom bar. Any field takes `none` (the default), `empty`, `filled`, `unique`, `percentEmpty`, `percentFilled`, `percentUnique`; `number` fields also take `sum`, `average`, `median`, `min`, `max`, `range`, and `date` fields `earliest`, `latest`, `dateRange`. A summary that doesn't apply to the field's type shows nothing. |
+| `summaries` | table | `{ "<fieldId>": "sum" }` — the statistic that field's cell shows in the bottom bar. Any field takes `none` (the default), `empty`, `filled`, `unique`, `percentEmpty`, `percentFilled`, `percentUnique`; `number` and `rating` fields also take `sum`, `average`, `median`, `min`, `max`, `range`, and `date` fields `earliest`, `latest`, `dateRange`. A summary that doesn't apply to the field's type shows nothing. |
 | `coverFieldId` | gallery | An `image` field id. |
 | `dateFieldId` | calendar | A `date` field id, or the sentinel `"__createdAt__"` to place records by their creation time. |
 | `mode` | calendar | `month` (default), `week`, or `day`. |

@@ -149,8 +149,10 @@ export function FieldDialog({
               <SelectContent>
                 {FIELD_TYPES.map((info) => (
                   <SelectItem key={info.type} value={info.type}>
-                    <info.icon className="size-4 text-muted-foreground" />
-                    {info.label}
+                    <span className="flex items-center gap-1.5">
+                      <info.icon className="size-4 text-muted-foreground" />
+                      {info.label}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
