@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, Plus, Trash2 } from 'lucide-react'
 import type {
   AudioRepeatMode,
@@ -57,7 +57,7 @@ import { SortPopover } from '@/components/toolbar/SortPopover'
 import { GroupSelect } from '@/components/toolbar/GroupSelect'
 import { RowHeightSelect } from '@/components/toolbar/RowHeightSelect'
 import { applyFilters, applySorts, groupRecords, type RecordGroup } from '@/lib/derive'
-import { fieldTypeInfo } from '@/lib/fields'
+import { fieldTypeInfo, isEmptyValue } from '@/lib/fields'
 import * as ops from '@/lib/ops'
 import { useProjectTables } from '@/lib/relations'
 import type { TableUpdater } from '@/lib/queries'
@@ -76,6 +76,73 @@ const MIN_COLUMN_WIDTH = 100
 const MAX_COLUMN_WIDTH = 600
 /** Row-number column, in pixels — `w-11`, which the summary bar has to match. */
 const GUTTER_WIDTH = 44
+/** Column header row, in pixels — `h-8`. It floats over the top of the scroll
+ *  container, so scrolling a row into view has to clear it. */
+const HEADER_HEIGHT = 32
+/** Group heading row, in pixels — `h-8`, fixed so the row layout below can be
+ *  computed rather than measured. */
+const GROUP_HEADER_HEIGHT = 32
+/** How much to render above and below the viewport, so a flick of the wheel
+ *  lands on rows that are already there. */
+const OVERSCAN = 320
+
+/**
+ * A row of the grid as laid out: a group heading or a record, at a known
+ * offset and height. Knowing the layout up front is what lets the table render
+ * only the slice of rows the viewport is actually over.
+ */
+type VirtualRow = { top: number; height: number } & (
+  | { kind: 'group'; key: string; group: RecordGroup }
+  | { kind: 'record'; record: RecordRow; number: number }
+)
+
+interface RowLayout {
+  items: VirtualRow[]
+  /** Every row's height added up: what the spacer rows have to add back. */
+  height: number
+  indexByRecordId: Map<string, number>
+}
+
+function layOutRows(
+  groups: RecordGroup[] | null,
+  records: RecordRow[],
+  rowHeight: number
+): RowLayout {
+  const items: VirtualRow[] = []
+  const indexByRecordId = new Map<string, number>()
+  let top = 0
+  let number = 0
+  const pushRecord = (record: RecordRow): void => {
+    number += 1
+    indexByRecordId.set(record.id, items.length)
+    items.push({ kind: 'record', record, number, top, height: rowHeight })
+    top += rowHeight
+  }
+
+  if (groups) {
+    for (const group of groups) {
+      items.push({ kind: 'group', key: group.key, group, top, height: GROUP_HEADER_HEIGHT })
+      top += GROUP_HEADER_HEIGHT
+      for (const record of group.records) pushRecord(record)
+    }
+  } else {
+    for (const record of records) pushRecord(record)
+  }
+  return { items, height: top, indexByRecordId }
+}
+
+/** The last row starting at or before `offset`. Binary search: this runs on
+ *  every scroll frame, over a list as long as the table has records. */
+function rowIndexAt(items: VirtualRow[], offset: number): number {
+  let low = 0
+  let high = items.length - 1
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2)
+    if (items[mid].top <= offset) low = mid
+    else high = mid - 1
+  }
+  return low
+}
 
 export function TableView({
   projectId,
@@ -137,20 +204,139 @@ export function TableView({
     return () => document.removeEventListener('mousedown', onPointerDown)
   }, [])
 
-  const visibleFields = table.fields.filter((f) => !config.hiddenFieldIds.includes(f.id))
+  // Filtering, sorting and grouping run over every record in the table, so they
+  // are tied to the data and the view's configuration — not to selecting a
+  // cell, typing, or scrolling, which would otherwise re-sort thousands of
+  // records on every keystroke.
+  const visibleFields = useMemo(
+    () => table.fields.filter((f) => !config.hiddenFieldIds.includes(f.id)),
+    [table.fields, config.hiddenFieldIds]
+  )
   const groupField = table.fields.find((f) => f.id === config.groupByFieldId)
 
-  const derived = applySorts(
-    applyFilters(table.records, config.filters, table.fields, config.filterMatch),
-    config.sorts,
-    table.fields,
-    tables
+  const derived = useMemo(
+    () =>
+      applySorts(
+        applyFilters(table.records, config.filters, table.fields, config.filterMatch),
+        config.sorts,
+        table.fields,
+        tables
+      ),
+    [table.records, table.fields, config.filters, config.filterMatch, config.sorts, tables]
   )
-  const groups: RecordGroup[] | null = groupField
-    ? groupRecords(derived, groupField, tables).filter((g) => g.records.length > 0)
-    : null
-  const displayedRecords = groups ? groups.flatMap((group) => group.records) : derived
+  const groups: RecordGroup[] | null = useMemo(
+    () =>
+      groupField
+        ? groupRecords(derived, groupField, tables).filter((g) => g.records.length > 0)
+        : null,
+    [derived, groupField, tables]
+  )
+  const displayedRecords = useMemo(
+    () => (groups ? groups.flatMap((group) => group.records) : derived),
+    [groups, derived]
+  )
   const find = useViewFind(displayedRecords, visibleFields, tables)
+
+  const heightInfo = rowHeightInfo(config.rowHeight)
+
+  // Only the rows the viewport is over get rendered. A few thousand records is
+  // otherwise tens of thousands of cells — many of them an <img> or an
+  // <audio> — for the browser to lay out and for React to walk on every
+  // selection, keystroke and edit.
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState(0)
+  const rows = useMemo(
+    () => layOutRows(groups, derived, heightInfo.px),
+    [groups, derived, heightInfo.px]
+  )
+
+  useLayoutEffect(() => {
+    const el = gridRef.current
+    if (!el) return
+    const measure = (): void => setViewportHeight(el.clientHeight)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const firstRow = rowIndexAt(rows.items, scrollTop - OVERSCAN)
+  const lastRow = rowIndexAt(rows.items, scrollTop + viewportHeight + OVERSCAN)
+  const windowedRows = rows.items.slice(firstRow, lastRow + 1)
+  // Empty rows standing in for everything above and below the window, so the
+  // scrollbar spans the whole table and the rows in view sit at their real
+  // offsets.
+  const lastWindowed = windowedRows[windowedRows.length - 1]
+  const topSpacer = windowedRows.length > 0 ? windowedRows[0].top : 0
+  const bottomSpacer = lastWindowed ? rows.height - (lastWindowed.top + lastWindowed.height) : 0
+
+  /** Scrolls `recordId`'s row into the viewport if it isn't already there —
+   *  and, because the window follows the scroll offset, mounts it. */
+  const ensureRecordVisible = useCallback(
+    (recordId: string): void => {
+      const el = gridRef.current
+      const index = rows.indexByRecordId.get(recordId)
+      if (!el || index === undefined) return
+      const row = rows.items[index]
+      const above = Math.max(0, row.top - HEADER_HEIGHT)
+      const below = row.top + row.height - el.clientHeight
+      const next = el.scrollTop > above ? above : el.scrollTop < below ? below : el.scrollTop
+      if (next === el.scrollTop) return
+      el.scrollTop = next
+      // Render the window for where we just scrolled to as part of this same
+      // update, so whatever wanted the row visible — focus, autoplay — finds
+      // it mounted.
+      setScrollTop(next)
+    },
+    [rows]
+  )
+
+  // A match can be anywhere in the table, including far outside the window, so
+  // its row has to be brought in before the highlight has anything to land on.
+  const activeMatch = find.matches[find.currentIndex]
+  useEffect(() => {
+    if (activeMatch) ensureRecordVisible(activeMatch.recordId)
+  }, [activeMatch, ensureRecordVisible])
+
+  // One playlist per audio column, over the cells that actually hold a clip.
+  // Positions rather than players, since only the rows in the window exist.
+  const audioPlaylists = useMemo(() => {
+    const byField = new Map<string, { ids: string[]; orderById: Map<string, number> }>()
+    for (const field of visibleFields) {
+      if (field.type !== 'audio') continue
+      const ids = displayedRecords
+        .filter((record) => !isEmptyValue(field, record.values[field.id]))
+        .map((record) => record.id)
+      byField.set(field.id, { ids, orderById: new Map(ids.map((id, index) => [id, index])) })
+    }
+    return byField
+  }, [visibleFields, displayedRecords])
+
+  const [audioRequest, setAudioRequest] = useState<{
+    recordId: string
+    fieldId: string
+    token: number
+  } | null>(null)
+  const audioTokenRef = useRef(0)
+
+  const requestAudioPlay = useCallback(
+    (fieldId: string, order: number): void => {
+      const recordId = audioPlaylists.get(fieldId)?.ids[order]
+      if (!recordId) return
+      ensureRecordVisible(recordId)
+      audioTokenRef.current += 1
+      setAudioRequest({ recordId, fieldId, token: audioTokenRef.current })
+    },
+    [audioPlaylists, ensureRecordVisible]
+  )
+
+  // The player picks the request up while this update commits (a child's
+  // effects run before its parent's), so clear it straight away: a row that
+  // scrolls out of the window and back must not start playing again on the
+  // strength of a request that was already served.
+  useEffect(() => {
+    if (audioRequest) setAudioRequest(null)
+  }, [audioRequest])
 
   // ⌘C copies the checked rows, or the selected cell; ⌘V writes a block from
   // any spreadsheet in, starting at the selected cell.
@@ -191,10 +377,9 @@ export function TableView({
       }
     }
 
-    setSelectedCell({
-      recordId: displayedRecords[nextRow].id,
-      fieldId: visibleFields[nextColumn].id
-    })
+    const recordId = displayedRecords[nextRow].id
+    ensureRecordVisible(recordId)
+    setSelectedCell({ recordId, fieldId: visibleFields[nextColumn].id })
   }
 
   const handleGridKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
@@ -420,102 +605,102 @@ export function TableView({
   const groupableFields = table.fields.filter(
     (f) => f.type !== 'image' && f.type !== 'audio' && f.type !== 'attachment'
   )
-  const heightInfo = rowHeightInfo(config.rowHeight)
 
-  let rowNumber = 0
-
-  const renderRows = (records: RecordRow[]): React.JSX.Element[] =>
-    records.map((record) => {
-      rowNumber += 1
-      const number = rowNumber
-      const isSelected = selectedRowIds.has(record.id)
-      return (
-        <tr
-          key={record.id}
+  const renderRecordRow = (record: RecordRow, number: number): React.JSX.Element => {
+    const isSelected = selectedRowIds.has(record.id)
+    return (
+      <tr
+        key={record.id}
+        className={cn(
+          'group/row border-b transition-colors hover:bg-muted/40',
+          isSelected && 'bg-accent/40'
+        )}
+        onContextMenu={(e) => void openRowContextMenu(record)(e)}
+      >
+        <td
           className={cn(
-            'group/row border-b transition-colors hover:bg-muted/40',
-            isSelected && 'bg-accent/40'
+            heightInfo.rowClass,
+            'sticky left-0 z-[1] w-11 min-w-11 border-b border-r bg-background text-center',
+            heightInfo.lineClamp > 1 ? 'align-top pt-1.5' : 'align-middle',
+            isSelected
+              ? 'bg-accent/40'
+              : 'group-hover/row:bg-[color-mix(in_oklch,var(--muted)_40%,var(--background))]'
           )}
-          onContextMenu={(e) => void openRowContextMenu(record)(e)}
         >
-          <td
+          <span
             className={cn(
-              heightInfo.rowClass,
-              'sticky left-0 z-[1] w-11 min-w-11 border-b border-r bg-background text-center',
-              heightInfo.lineClamp > 1 ? 'align-top pt-1.5' : 'align-middle',
-              isSelected
-                ? 'bg-accent/40'
-                : 'group-hover/row:bg-[color-mix(in_oklch,var(--muted)_40%,var(--background))]'
+              'text-xs tabular-nums text-muted-foreground',
+              isSelected ? 'invisible' : 'group-hover/row:invisible'
             )}
           >
-            <span
-              className={cn(
-                'text-xs tabular-nums text-muted-foreground',
-                isSelected ? 'invisible' : 'group-hover/row:invisible'
-              )}
-            >
-              {number}
-            </span>
-            <div
-              className={cn(
-                'absolute inset-0 justify-center',
-                heightInfo.lineClamp > 1 ? 'items-start pt-1.5' : 'items-center',
-                isSelected ? 'flex' : 'hidden group-hover/row:flex'
-              )}
-            >
-              <Checkbox
-                checked={isSelected}
-                onCheckedChange={(checked) => toggleRowSelected(record.id, checked === true)}
-              />
-            </div>
-          </td>
-          {visibleFields.map((field) => (
-            <TableCell
-              key={field.id}
-              projectId={projectId}
-              field={field}
-              record={record}
-              update={update}
-              heightInfo={heightInfo}
-              width={columnWidth(field.id)}
-              audioPlayback={
-                field.type === 'audio'
-                  ? {
-                      groupId: `${view.id}:${field.id}`,
-                      order: number,
-                      repeatMode: config.audioPlayback?.[field.id]?.repeatMode ?? 'off',
-                      shuffleMode: config.audioPlayback?.[field.id]?.shuffleMode ?? 'off'
-                    }
-                  : undefined
-              }
-              selected={
-                selectedCell?.recordId === record.id && selectedCell?.fieldId === field.id
-              }
-              editing={
-                editingCell?.recordId === record.id && editingCell?.fieldId === field.id
-              }
-              editSeed={
-                editingCell?.recordId === record.id && editingCell?.fieldId === field.id
-                  ? editingCell.seed
-                  : undefined
-              }
-              find={find}
-              onSelect={() => setSelectedCell({ recordId: record.id, fieldId: field.id })}
-              onEdit={(seed) => {
-                setSelectedCell({ recordId: record.id, fieldId: field.id })
-                setEditingCell({ recordId: record.id, fieldId: field.id, seed })
-              }}
-              onCommit={(move) => {
-                setEditingCell(null)
-                if (move) moveCell({ recordId: record.id, fieldId: field.id }, move)
-              }}
-              onCancel={() => setEditingCell(null)}
+            {number}
+          </span>
+          <div
+            className={cn(
+              'absolute inset-0 justify-center',
+              heightInfo.lineClamp > 1 ? 'items-start pt-1.5' : 'items-center',
+              isSelected ? 'flex' : 'hidden group-hover/row:flex'
+            )}
+          >
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={(checked) => toggleRowSelected(record.id, checked === true)}
             />
-          ))}
-          <td />
-        </tr>
-      )
-    })
+          </div>
+        </td>
+        {visibleFields.map((field) => (
+          <TableCell
+            key={field.id}
+            projectId={projectId}
+            field={field}
+            record={record}
+            update={update}
+            heightInfo={heightInfo}
+            width={columnWidth(field.id)}
+            audioPlayback={
+              field.type === 'audio'
+                ? {
+                    groupId: `${view.id}:${field.id}`,
+                    order: audioPlaylists.get(field.id)?.orderById.get(record.id) ?? 0,
+                    total: audioPlaylists.get(field.id)?.ids.length ?? 0,
+                    repeatMode: config.audioPlayback?.[field.id]?.repeatMode ?? 'off',
+                    shuffleMode: config.audioPlayback?.[field.id]?.shuffleMode ?? 'off',
+                    requestPlay: (order) => requestAudioPlay(field.id, order),
+                    autoPlayToken:
+                      audioRequest?.recordId === record.id && audioRequest.fieldId === field.id
+                        ? audioRequest.token
+                        : undefined
+                  }
+                : undefined
+            }
+            selected={
+              selectedCell?.recordId === record.id && selectedCell?.fieldId === field.id
+            }
+            editing={
+              editingCell?.recordId === record.id && editingCell?.fieldId === field.id
+            }
+            editSeed={
+              editingCell?.recordId === record.id && editingCell?.fieldId === field.id
+                ? editingCell.seed
+                : undefined
+            }
+            find={find}
+            onSelect={() => setSelectedCell({ recordId: record.id, fieldId: field.id })}
+            onEdit={(seed) => {
+              setSelectedCell({ recordId: record.id, fieldId: field.id })
+              setEditingCell({ recordId: record.id, fieldId: field.id, seed })
+            }}
+            onCommit={(move) => {
+              setEditingCell(null)
+              if (move) moveCell({ recordId: record.id, fieldId: field.id }, move)
+            }}
+            onCancel={() => setEditingCell(null)}
+          />
+        ))}
+        <td />
+      </tr>
+    )
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -575,6 +760,7 @@ export function TableView({
         // with the columns.
         onScroll={(e) => {
           if (summaryBarRef.current) summaryBarRef.current.scrollLeft = e.currentTarget.scrollLeft
+          setScrollTop(e.currentTarget.scrollTop)
         }}
         onKeyDown={handleGridKeyDown}
       >
@@ -722,13 +908,35 @@ export function TableView({
             </tr>
           </thead>
           <tbody>
-            {groups
-              ? groups.map((group) => (
-                  <GroupSection key={group.key} group={group} colSpan={visibleFields.length + 2}>
-                    {renderRows(group.records)}
-                  </GroupSection>
-                ))
-              : renderRows(derived)}
+            {topSpacer > 0 && (
+              <tr aria-hidden>
+                <td
+                  colSpan={visibleFields.length + 2}
+                  style={{ height: topSpacer }}
+                  className="p-0"
+                />
+              </tr>
+            )}
+            {windowedRows.map((row) =>
+              row.kind === 'group' ? (
+                <GroupHeadingRow
+                  key={`group:${row.key}`}
+                  group={row.group}
+                  colSpan={visibleFields.length + 2}
+                />
+              ) : (
+                renderRecordRow(row.record, row.number)
+              )
+            )}
+            {bottomSpacer > 0 && (
+              <tr aria-hidden>
+                <td
+                  colSpan={visibleFields.length + 2}
+                  style={{ height: bottomSpacer }}
+                  className="p-0"
+                />
+              </tr>
+            )}
             <tr>
               <td colSpan={visibleFields.length + 2} className="p-0">
                 <button
@@ -804,33 +1012,30 @@ export function TableView({
   )
 }
 
-function GroupSection({
+/** Fixed height (`h-8`, matching GROUP_HEADER_HEIGHT): the row layout the
+ *  window is computed from has to know how tall this is without measuring it. */
+function GroupHeadingRow({
   group,
-  colSpan,
-  children
+  colSpan
 }: {
   group: RecordGroup
   colSpan: number
-  children: React.ReactNode
 }): React.JSX.Element {
   return (
-    <>
-      <tr className="border-b bg-muted/60">
-        <td colSpan={colSpan} className="border-b px-3 py-1.5">
-          <span className="flex items-center gap-2">
-            {group.choice ? (
-              <ChoiceBadge choice={group.choice} />
-            ) : (
-              <span className="text-xs font-medium">{group.label}</span>
-            )}
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {group.records.length}
-            </span>
+    <tr className="border-b bg-muted/60">
+      <td colSpan={colSpan} className="h-8 border-b px-3">
+        <span className="flex items-center gap-2">
+          {group.choice ? (
+            <ChoiceBadge choice={group.choice} />
+          ) : (
+            <span className="text-xs font-medium">{group.label}</span>
+          )}
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {group.records.length}
           </span>
-        </td>
-      </tr>
-      {children}
-    </>
+        </span>
+      </td>
+    </tr>
   )
 }
 

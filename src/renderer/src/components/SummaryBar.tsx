@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { ChevronDown } from 'lucide-react'
 import type { Field, RecordRow, SummaryKey, Table } from '@shared/types'
 import {
@@ -83,7 +84,12 @@ function SummaryCell({
   onChange: (key: SummaryKey) => void
 }): React.JSX.Element {
   const active = summaryOption(field, value)
-  const text = summaryValue(field, value, records, tables)
+  // Walks every record the view shows, so it is kept off the path of renders
+  // that only moved the selection or opened a menu.
+  const text = useMemo(
+    () => summaryValue(field, value, records, tables),
+    [field, value, records, tables]
+  )
 
   return (
     <div style={{ width, minWidth: width }} className="h-8 shrink-0 border-r">

@@ -11,17 +11,34 @@ function formatTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
+/**
+ * A player's place in a table column's playlist. The column is addressed by
+ * position rather than by element: the table only mounts the rows it is
+ * showing, so most of the playlist has no DOM at any given moment. Handing the
+ * next position back through `requestPlay` lets the view scroll it into the
+ * window and start it there.
+ */
 export interface AudioPlayback {
   groupId: string
+  /** 0-based position among the column's playable cells, in display order. */
   order: number
+  /** How many playable cells the column has, mounted or not. */
+  total: number
   repeatMode: AudioRepeatMode
   shuffleMode: AudioShuffleMode
+  /** Asks the view to show `order`'s row and start its player. */
+  requestPlay: (order: number) => void
+  /** Set by the view on the player it was just asked to start, and bumped on
+   *  every request so the same cell can be started twice in a row. */
+  autoPlayToken?: number
 }
 
 interface PlaylistState {
-  entries: Map<HTMLAudioElement, number>
-  shuffleRemaining: HTMLAudioElement[]
-  next?: HTMLAudioElement
+  /** Positions still to come in the current shuffled pass. */
+  shuffleRemaining: number[]
+  /** Position this playlist just asked to be played, so the play it triggers
+   *  is recognised as a continuation rather than a fresh session. */
+  next?: number
   shuffleMode?: AudioShuffleMode
 }
 
@@ -34,13 +51,13 @@ const playlists = new Map<string, PlaylistState>()
 function playlistState(groupId: string): PlaylistState {
   let state = playlists.get(groupId)
   if (!state) {
-    state = { entries: new Map(), shuffleRemaining: [] }
+    state = { shuffleRemaining: [] }
     playlists.set(groupId, state)
   }
   return state
 }
 
-function shuffled(items: HTMLAudioElement[]): HTMLAudioElement[] {
+function shuffled(items: number[]): number[] {
   const result = [...items]
   for (let i = result.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1))
@@ -49,63 +66,66 @@ function shuffled(items: HTMLAudioElement[]): HTMLAudioElement[] {
   return result
 }
 
+/** Every position in the playlist but the one playing, which is where a
+ *  shuffled pass starts from. */
+function othersShuffled(playback: AudioPlayback): number[] {
+  const others: number[] = []
+  for (let i = 0; i < playback.total; i += 1) if (i !== playback.order) others.push(i)
+  return shuffled(others)
+}
+
 function playFromStart(audio: HTMLAudioElement): void {
   audio.currentTime = 0
   void audio.play().catch(() => undefined)
 }
 
-function beginPlaylistSession(audio: HTMLAudioElement, playback: AudioPlayback): void {
+function beginPlaylistSession(playback: AudioPlayback): void {
   const state = playlistState(playback.groupId)
-  if (state.next === audio) {
+  if (state.next === playback.order) {
     state.next = undefined
     return
   }
   state.shuffleMode = playback.shuffleMode
-  state.shuffleRemaining = shuffled(
-    Array.from(state.entries.keys()).filter((candidate) => candidate !== audio)
-  )
+  state.shuffleRemaining = othersShuffled(playback)
 }
 
 function advancePlaylist(audio: HTMLAudioElement, playback: AudioPlayback): void {
-  const state = playlists.get(playback.groupId)
-  if (!state?.entries.has(audio)) return
+  const state = playlistState(playback.groupId)
 
   if (playback.repeatMode === 'one') {
-    state.next = audio
+    state.next = playback.order
     playFromStart(audio)
     return
   }
 
-  let next: HTMLAudioElement | undefined
+  let next: number | undefined
   if (playback.shuffleMode === 'on') {
     if (state.shuffleMode !== 'on') {
       state.shuffleMode = 'on'
-      state.shuffleRemaining = shuffled(
-        Array.from(state.entries.keys()).filter((candidate) => candidate !== audio)
-      )
+      state.shuffleRemaining = othersShuffled(playback)
     }
+    // Rows can come and go between clips (a filter, an edit), so drop
+    // positions the column no longer has.
     state.shuffleRemaining = state.shuffleRemaining.filter(
-      (candidate) => candidate !== audio && state.entries.has(candidate)
+      (candidate) => candidate !== playback.order && candidate < playback.total
     )
     next = state.shuffleRemaining.shift()
-    if (!next && playback.repeatMode === 'all') {
-      state.shuffleRemaining = shuffled(
-        Array.from(state.entries.keys()).filter((candidate) => candidate !== audio)
-      )
-      next = state.shuffleRemaining.shift() ?? audio
+    if (next === undefined && playback.repeatMode === 'all') {
+      state.shuffleRemaining = othersShuffled(playback)
+      next = state.shuffleRemaining.shift() ?? playback.order
     }
   } else {
     state.shuffleMode = 'off'
-    const ordered = Array.from(state.entries.entries()).sort((a, b) => a[1] - b[1])
-    const index = ordered.findIndex(([candidate]) => candidate === audio)
-    next = ordered[index + 1]?.[0]
-    if (!next && playback.repeatMode === 'all') next = ordered[0]?.[0]
+    const following = playback.order + 1
+    next =
+      following < playback.total ? following : playback.repeatMode === 'all' ? 0 : undefined
   }
 
-  if (next) {
-    state.next = next
-    playFromStart(next)
-  }
+  if (next === undefined) return
+  state.next = next
+  // A one-clip column repeating itself is the only case that stays put.
+  if (next === playback.order) playFromStart(audio)
+  else playback.requestPlay(next)
 }
 
 function pauseOthers(el: HTMLAudioElement): void {
@@ -140,17 +160,14 @@ export function AudioPlayer({
     setDuration(0)
     setCurrent(0)
   }, [src])
+  // The view asked for this cell: start it, whether it was already on screen
+  // or has just been scrolled into the window for this very purpose.
+  const autoPlayToken = playback?.autoPlayToken
   useEffect(() => {
+    if (autoPlayToken === undefined) return
     const audio = audioRef.current
-    if (!audio || !playback) return
-    const state = playlistState(playback.groupId)
-    state.entries.set(audio, playback.order)
-    return () => {
-      state.entries.delete(audio)
-      state.shuffleRemaining = state.shuffleRemaining.filter((candidate) => candidate !== audio)
-      if (state.entries.size === 0) playlists.delete(playback.groupId)
-    }
-  }, [playback?.groupId, playback?.order])
+    if (audio) playFromStart(audio)
+  }, [autoPlayToken])
 
   // Don't leave a dangling reference behind when this player unmounts (e.g.
   // the record it belongs to scrolls out of a virtualized list) while it was
@@ -210,7 +227,7 @@ export function AudioPlayer({
         className="hidden"
         onPlay={(e) => {
           pauseOthers(e.currentTarget)
-          if (playback) beginPlaylistSession(e.currentTarget, playback)
+          if (playback) beginPlaylistSession(playback)
           setPlaying(true)
         }}
         onPause={() => setPlaying(false)}
