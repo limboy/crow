@@ -58,7 +58,7 @@ import { SortPopover } from '@/components/toolbar/SortPopover'
 import { GroupSelect } from '@/components/toolbar/GroupSelect'
 import { RowHeightSelect } from '@/components/toolbar/RowHeightSelect'
 import { applyFilters, applySorts, groupRecords, type RecordGroup } from '@/lib/derive'
-import { fieldTypeInfo, isEmptyValue } from '@/lib/fields'
+import { cellValue, fieldTypeInfo, isComputedField, isEmptyValue } from '@/lib/fields'
 import * as ops from '@/lib/ops'
 import { useProjectTables } from '@/lib/relations'
 import type { TableUpdater } from '@/lib/queries'
@@ -1108,7 +1108,7 @@ function TableCell({
   onCommit: (move?: CellMove) => void
   onCancel: () => void
 }): React.JSX.Element {
-  const value = record.values[field.id]
+  const value = cellValue(field, record)
   const findState = getFindCellState(find, record.id, field.id)
   const cellRef = useRef<HTMLTableCellElement>(null)
   const setValue = (next: unknown): void =>
@@ -1183,6 +1183,8 @@ function CellContent({
 }): React.JSX.Element {
   const [draft, setDraft] = useState('')
   const wrap = lineClamp > 1
+  // Created/modified stamps come from the record, so their cells only display.
+  const readOnly = isComputedField(field.type)
   const hasMultipleRelationRecords =
     field.type === 'relation' && Array.isArray(value) && value.length > 1
   const anchorRef = useRef<HTMLDivElement>(null)
@@ -1319,7 +1321,7 @@ function CellContent({
   }
 
   // Inline text-style editing for text / number / url.
-  if (editing) {
+  if (editing && !readOnly) {
     const commit = (move?: CellMove): void => {
       if (editFinishedRef.current) return
       editFinishedRef.current = true
@@ -1398,7 +1400,7 @@ function CellContent({
         selected && 'ring-2 ring-inset ring-ring'
       )}
       onClick={onSelect}
-      onDoubleClick={() => onEdit()}
+      onDoubleClick={readOnly ? undefined : () => onEdit()}
     >
       <ValueDisplay field={field} value={value} lineClamp={lineClamp} />
     </button>

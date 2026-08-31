@@ -16,7 +16,24 @@ import { randomUUID } from 'crypto'
 
 const SAFE_ID = /^[a-zA-Z0-9-]+$/
 
-const FIELD_TYPES = ['text', 'number', 'select', 'multiSelect', 'date', 'checkbox', 'url', 'image', 'audio', 'relation', 'rating', 'attachment']
+const FIELD_TYPES = ['text', 'number', 'select', 'multiSelect', 'date', 'checkbox', 'url', 'image', 'audio', 'relation', 'rating', 'attachment', 'createdTime', 'lastModifiedTime']
+
+/** Field types the app fills in from the record's own timestamps. They have no
+ *  stored value, so nothing may write to them. */
+const COMPUTED_FIELD_TYPES = ['createdTime', 'lastModifiedTime']
+
+/** How a createdTime/lastModifiedTime field renders in the app; the CLI only
+ *  stores the choice, and always reads the value back as its ISO instant. */
+const DATE_FORMATS = ['slash', 'slashTime', 'slashTimeZone', 'dash', 'dashTime', 'dashTimeZone']
+
+const isComputedField = (type) => COMPUTED_FIELD_TYPES.includes(type)
+
+/** The value a field reads for a record, whether it's stored or derived. */
+function cellValue(field, record) {
+  if (field.type === 'createdTime') return record.createdAt
+  if (field.type === 'lastModifiedTime') return record.updatedAt ?? record.createdAt
+  return record.values[field.id]
+}
 
 const CHOICE_COLORS = ['gray', 'red', 'orange', 'amber', 'green', 'teal', 'blue', 'indigo', 'purple', 'pink']
 
@@ -210,7 +227,7 @@ function linkTargetFor(project, ref, fieldName) {
  *  level is enough to name a row, and it can't recurse. */
 function recordLabel(table, record) {
   const primary = table.fields[0]
-  const raw = primary ? record.values[primary.id] : undefined
+  const raw = primary ? cellValue(primary, record) : undefined
   if (primary === undefined || raw === undefined || raw === null || raw === '') return 'Untitled'
   if (primary.type === 'select') return choiceName(primary, raw) ?? 'Untitled'
   if (primary.type === 'multiSelect') {
@@ -255,6 +272,9 @@ function choiceIdFor(field, name) {
 }
 
 async function coerceValue(field, value, project) {
+  if (isComputedField(field.type)) {
+    fail(`Field "${field.name}" is a ${field.type} field; the app keeps it from the record itself and it can't be written to`)
+  }
   const projectId = project.id
   if (value === null) return null
   switch (field.type) {
@@ -410,7 +430,7 @@ async function applyValues(table, record, input, project) {
 function humanize(table, record, project) {
   const values = {}
   for (const field of table.fields) {
-    const raw = record.values[field.id]
+    const raw = cellValue(field, record)
     if (raw === undefined || raw === null) continue
     if (field.type === 'select') {
       const name = choiceName(field, raw)
@@ -431,7 +451,7 @@ function humanize(table, record, project) {
       values[field.name] = raw
     }
   }
-  return { id: record.id, createdAt: record.createdAt, values }
+  return { id: record.id, createdAt: record.createdAt, updatedAt: record.updatedAt ?? record.createdAt, values }
 }
 
 function matchesWhere(humanized, where) {
@@ -447,11 +467,15 @@ function matchesWhere(humanized, where) {
 // Schema helpers
 // ---------------------------------------------------------------------------
 
-function buildField(name, type, choiceNames = [], relation) {
+function buildField(name, type, choiceNames = [], relation, dateFormat) {
   if (!FIELD_TYPES.includes(type)) {
     fail(`Unknown field type "${type}". Valid types: ${FIELD_TYPES.join(', ')}`)
   }
+  if (dateFormat !== undefined && !DATE_FORMATS.includes(dateFormat)) {
+    fail(`Unknown date format "${dateFormat}". Valid formats: ${DATE_FORMATS.join(', ')}`)
+  }
   const field = { id: uuid(), name, type }
+  if (isComputedField(type)) field.dateFormat = dateFormat ?? DATE_FORMATS[0]
   if (type === 'select' || type === 'multiSelect') {
     field.options = {
       choices: choiceNames.map((n, i) => ({ id: uuid(), name: n, color: CHOICE_COLORS[i % CHOICE_COLORS.length] }))
@@ -624,6 +648,7 @@ function tableSchema(project, table) {
       name: f.name,
       type: f.type,
       ...(f.options ? { choices: f.options.choices.map((c) => c.name) } : {}),
+      ...(isComputedField(f.type) ? { dateFormat: f.dateFormat ?? DATE_FORMATS[0] } : {}),
       ...(f.type === 'relation'
         ? {
             linkTable: linkedTable(project, f)?.name ?? null,
@@ -684,7 +709,8 @@ function fieldsFromFlag(raw, project, self) {
             multiple: s.multiple !== false,
             inverseFieldId: uuid()
           }
-        : undefined
+        : undefined,
+      s.dateFormat
     )
   )
   const names = fields.map((f) => f.name.toLowerCase())
@@ -771,7 +797,7 @@ COMMANDS
                                            Rename a table
   delete-table <project> <table> --yes     Delete a table and all its records (requires --yes;
                                            a project always keeps at least one table)
-  add-field <project> <name> <type> [--choices "A,B,C"] [--table NAME]
+  add-field <project> <name> <type> [--choices "A,B,C"] [--table NAME] [--date-format NAME]
                                            Add a field. Types: ${FIELD_TYPES.join(', ')}
                                            A relation field takes --link-table <name>, the table
                                            in the same project its records link to (may be its
@@ -809,6 +835,11 @@ VALUE FORMATS (per field type, when writing)
                 or an existing app-image:/// URL
   audio         path to a local audio file (copied into the app's storage),
                 or an existing app-audio:/// URL
+  createdTime, lastModifiedTime
+                read-only — the app keeps them from the record itself, and writing to
+                one is an error. Read back as an ISO instant. --date-format picks how
+                the app displays it: slash (2026/01/30), slashTime, slashTimeZone,
+                dash (2026-01-30), dashTime, dashTimeZone.
   attachment    array of local file paths (each copied into the app's storage) —
                 a single path is accepted for one file. Also takes a {url,name}
                 object exactly as read back, which is how you move an existing
@@ -827,6 +858,7 @@ EXAMPLES
   crow create-table "My Tasks" People --fields '[{"name":"Name","type":"text"}]'
   crow add-record "My Tasks" '{"Name":"Ada"}' --table People
   crow add-field "My Tasks" Owner relation --link-table People --single
+  crow add-field "My Tasks" Added createdTime --date-format slashTime
   crow add-record "My Tasks" '{"Name":"Ship 1.0","Owner":"Ada"}'
 `
 
@@ -953,7 +985,7 @@ const commands = {
 
   async 'add-field'({ positional, flags }) {
     const [ref, name, type] = positional
-    if (!ref || !name || !type) fail('Usage: add-field <project> <name> <type> [--choices "A,B,C"] [--link-table NAME] [--single]')
+    if (!ref || !name || !type) fail('Usage: add-field <project> <name> <type> [--choices "A,B,C"] [--link-table NAME] [--single] [--date-format NAME]')
     const choices = typeof flags.choices === 'string' ? flags.choices.split(',').map((c) => c.trim()).filter(Boolean) : []
     const schema = await mutateProject(ref, (project) => {
       const table = resolveTable(project, flags.table)
@@ -966,7 +998,7 @@ const commands = {
               inverseFieldId: uuid()
             }
           : undefined
-      const field = buildField(name, type, choices, relation)
+      const field = buildField(name, type, choices, relation, flags['date-format'])
       table.fields.push(field)
       if (field.type === 'relation') syncRelationField(project, table, field)
       return schemaOf(project, table)
@@ -1041,6 +1073,10 @@ const commands = {
     const record = resolveRecord(table, recordRef)
     const before = structuredClone(table)
     const changedRelations = await applyValues(table, record, input, project)
+    // What a lastModifiedTime field reads. Stamped even when the values worked
+    // out identical: the app does the same for an edit it can't prove was a
+    // no-op, and an agent asking for a write means it.
+    record.updatedAt = now()
     syncTableRelations(project, table, before, changedRelations)
     project.updatedAt = now()
     await saveProject(project)

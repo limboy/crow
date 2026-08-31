@@ -1,6 +1,5 @@
 import { newRecord, newTable, newView } from '@shared/defaults'
 import {
-  CREATED_AT_DATE_SOURCE,
   type Field,
   type Project,
   type RecordRow,
@@ -18,6 +17,38 @@ import { parseCellText } from './cellText'
  */
 
 // --- Tables -----------------------------------------------------------------
+
+/**
+ * Stamps `updatedAt` on every record an edit touched, so `lastModifiedTime`
+ * fields have something to read.
+ *
+ * Every transform here is pure, so a record that survived an edit unchanged
+ * comes out as the very same object — identity is what tells the two apart,
+ * without diffing values. Renaming a view or resizing a column leaves the
+ * records array itself untouched and costs a single comparison.
+ */
+export function touchModifiedRecords(before: Project, after: Project, at: string): Project {
+  if (before === after) return after
+  const previous = new Map(before.tables.map((table) => [table.id, table]))
+  let changed = false
+  const tables = after.tables.map((table) => {
+    const old = previous.get(table.id)
+    // A table the edit added arrives with its records already stamped as new.
+    if (!old || old.records === table.records) return table
+    const known = new Map(old.records.map((record) => [record.id, record]))
+    let touched = false
+    const records = table.records.map((record) => {
+      const previousRecord = known.get(record.id)
+      if (previousRecord === undefined || previousRecord === record) return record
+      touched = true
+      return { ...record, updatedAt: at }
+    })
+    if (!touched) return table
+    changed = true
+    return { ...table, records }
+  })
+  return changed ? { ...after, tables } : after
+}
 
 function replaceTable(project: Project, table: Table): Project {
   return {
@@ -362,8 +393,7 @@ export function addView(table: Table, type: ViewType): Table {
   const count = table.views.filter((v) => v.type === type).length
   const view = newView(type)
   if (view.type === 'calendar') {
-    view.config.dateFieldId =
-      table.fields.find((field) => field.type === 'date')?.id ?? CREATED_AT_DATE_SOURCE
+    view.config.dateFieldId = table.fields.find((field) => field.type === 'date')?.id
   }
   if (count > 0) view.name = `${view.name} ${count + 1}`
   return { ...table, views: [...table.views, view] }

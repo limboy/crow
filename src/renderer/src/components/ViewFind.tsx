@@ -10,7 +10,7 @@ import {
   InputGroupText
 } from '@/components/ui/input-group'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { displayValue } from '@/lib/fields'
+import { cellValue, displayValue } from '@/lib/fields'
 import { isMac } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -50,7 +50,7 @@ function matchingCells(
   const matches: FindCellMatch[] = []
   for (const record of records) {
     for (const field of fields) {
-      const text = displayValue(field, record.values[field.id], tables).toLocaleLowerCase()
+      const text = displayValue(field, cellValue(field, record), tables).toLocaleLowerCase()
       if (text.includes(needle)) {
         matches.push({
           key: findCellKey(record.id, field.id),

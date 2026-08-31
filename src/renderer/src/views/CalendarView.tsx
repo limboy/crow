@@ -7,7 +7,6 @@ import {
   endOfMonth,
   endOfWeek,
   format,
-  isValid,
   isSameDay,
   isSameMonth,
   startOfMonth,
@@ -18,7 +17,6 @@ import {
 } from 'date-fns'
 import { CalendarDays, ChevronLeft, ChevronRight, Image as ImageIcon, Plus } from 'lucide-react'
 import {
-  CREATED_AT_DATE_SOURCE,
   type Field,
   type ImageAspectRatio,
   type RecordRow,
@@ -48,7 +46,14 @@ import { GroupSelect } from '@/components/toolbar/GroupSelect'
 import { ImageFieldSelect } from '@/components/toolbar/ImageFieldSelect'
 import { SortPopover } from '@/components/toolbar/SortPopover'
 import { applyFilters, applySorts } from '@/lib/derive'
-import { dateValueParts, displayValue, isEmptyValue } from '@/lib/fields'
+import {
+  cellValue,
+  dateFormatInfo,
+  displayValue,
+  fieldDateParts,
+  isComputedField,
+  isEmptyValue
+} from '@/lib/fields'
 import { imageAspectRatioInfo } from '@/lib/imageAspect'
 import { useProjectTables } from '@/lib/relations'
 import * as ops from '@/lib/ops'
@@ -60,10 +65,28 @@ type CalendarMode = NonNullable<CalendarViewType['config']['mode']>
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const WEEK_STARTS_ON = { weekStartsOn: 1 } as const
-const CREATED_DATE_SOURCE: Field = {
-  id: CREATED_AT_DATE_SOURCE,
-  name: 'Created',
-  type: 'date'
+
+/** Field types a calendar can lay records out by. The two timestamp types are
+ *  read-only, so records can be shown on the grid but not created onto a day. */
+const DATE_SOURCE_TYPES: Field['type'][] = ['date', 'createdTime', 'lastModifiedTime']
+
+/**
+ * Text for an event's time chip — the wall-clock part of whatever field the
+ * calendar lays records out by, written the way that field writes it.
+ *
+ * A `createdTime`/`lastModifiedTime` field set to a date-only format has no
+ * time to show, so it gets no chip: the day cell already says which day it is.
+ * Placement is unaffected either way — a record still sits at the minute it
+ * was actually created.
+ */
+function eventTimeLabel(field: Field | undefined, time: string | undefined): string | undefined {
+  if (!field || !time) return undefined
+  if (isComputedField(field.type)) {
+    return dateFormatInfo(field.dateFormat).hasTime ? time : undefined
+  }
+  // A `date` cell has no format of its own, so its time keeps the locale-ish
+  // 12-hour reading it has always had.
+  return format(new Date(2000, 0, 1, Number(time.slice(0, 2)), Number(time.slice(3))), 'h:mm a')
 }
 
 export function CalendarView({
@@ -84,10 +107,12 @@ export function CalendarView({
   // which live in a sibling table.
   const tables = useProjectTables()
   const dateFields = table.fields.filter((field) => field.type === 'date')
-  const dateSources = [CREATED_DATE_SOURCE, ...dateFields]
+  const dateSources = table.fields.filter((field) => DATE_SOURCE_TYPES.includes(field.type))
   const dateSource =
-    dateSources.find((field) => field.id === config.dateFieldId) ?? CREATED_DATE_SOURCE
-  const canAddOnDay = dateSource.id !== CREATED_AT_DATE_SOURCE
+    dateSources.find((field) => field.id === config.dateFieldId) ?? dateSources[0]
+  // Only a real date field can be written to, so that's the only source a
+  // click on an empty day can add a record onto.
+  const canAddOnDay = dateSource?.type === 'date'
   const mode = config.mode ?? 'month'
   const showHours = config.showHours ?? true
   const imageFields = table.fields.filter((field) => field.type === 'image')
@@ -95,7 +120,7 @@ export function CalendarView({
   const cardFields = table.fields.filter(
     (field) =>
       !config.hiddenFieldIds.includes(field.id) &&
-      field.id !== dateSource.id &&
+      field.id !== dateSource?.id &&
       field.id !== imageField?.id
   )
 
@@ -117,7 +142,7 @@ export function CalendarView({
   }
 
   const addRecordOn = (day: Date, timed = false): void => {
-    if (!canAddOnDay) return
+    if (!dateSource || !canAddOnDay) return
     update((p) => {
       const value = format(day, timed ? "yyyy-MM-dd'T'HH:mm" : 'yyyy-MM-dd')
       const next = ops.addRecord(p, { [dateSource.id]: value })
@@ -157,7 +182,7 @@ export function CalendarView({
       <div className="flex h-10 shrink-0 items-center gap-1 border-b px-3">
         <GroupSelect
           fields={dateSources}
-          value={dateSource.id}
+          value={dateSource?.id}
           onChange={(dateFieldId) => patchConfig({ dateFieldId })}
           label="Date"
       icon={CalendarDays}
@@ -190,7 +215,12 @@ export function CalendarView({
         )}
         {mode !== 'month' && (
           <FieldsPopover
-            fields={table.fields}
+            // The date source and cover image are shown by the card's own
+            // chrome rather than as detail rows, so listing them here would
+            // offer a checkbox that changes nothing.
+            fields={table.fields.filter(
+              (field) => field.id !== dateSource?.id && field.id !== imageField?.id
+            )}
             hiddenFieldIds={config.hiddenFieldIds}
             onChange={(hiddenFieldIds) => patchConfig({ hiddenFieldIds })}
             lockedFieldId={table.fields[0]?.id}
@@ -254,7 +284,7 @@ export function CalendarView({
         showHours={showHours}
         records={derived}
         titleField={table.fields[0]}
-        dateSourceId={dateSource.id}
+        dateSource={dateSource}
         cardFields={cardFields}
         imageField={imageField}
         aspectRatio={config.imageAspectRatio}
@@ -290,7 +320,7 @@ function CalendarGrid({
   showHours,
   records: allRecords,
   titleField,
-  dateSourceId,
+  dateSource,
   cardFields,
   imageField,
   aspectRatio,
@@ -303,7 +333,7 @@ function CalendarGrid({
   showHours: boolean
   records: RecordRow[]
   titleField?: Field
-  dateSourceId: string
+  dateSource?: Field
   cardFields: Field[]
   imageField?: Field
   aspectRatio?: ImageAspectRatio
@@ -331,14 +361,10 @@ function CalendarGrid({
   const recordsByDay = new Map<string, CalendarRecord[]>()
 
   for (const record of allRecords) {
-    const createdDate = new Date(record.createdAt)
-    const parts =
-      dateSourceId === CREATED_AT_DATE_SOURCE && isValid(createdDate)
-        ? { date: format(createdDate, 'yyyy-MM-dd'), time: format(createdDate, 'HH:mm') }
-        : dateValueParts(record.values[dateSourceId])
+    const parts = dateSource && fieldDateParts(dateSource, cellValue(dateSource, record))
     if (!parts) continue
     const records = recordsByDay.get(parts.date) ?? []
-    records.push({ record, time: parts.time })
+    records.push({ record, time: parts.time, timeLabel: eventTimeLabel(dateSource, parts.time) })
     recordsByDay.set(parts.date, records)
   }
 
@@ -375,7 +401,10 @@ function CalendarGrid({
 
 interface CalendarRecord {
   record: RecordRow
+  /** `HH:mm`, used to place the record on the hourly agenda. */
   time?: string
+  /** What the time chip reads, or absent when the source shows no time. */
+  timeLabel?: string
 }
 
 function CalendarDayGrid({
@@ -535,7 +564,7 @@ function CalendarDayGrid({
                   <CalendarEventButton
                     key={record.record.id}
                     record={record.record}
-                    time={record.time}
+                    timeLabel={record.timeLabel}
                     titleField={titleField}
                     cardFields={compactRange ? cardFields : undefined}
                     imageField={compactRange ? imageField : undefined}
@@ -827,13 +856,13 @@ function TimedEventButton({
   onOpenRecord: (recordId: string) => void
 }): React.JSX.Element {
   const tables = useProjectTables()
-  const title = titleField ? displayValue(titleField, item.record.values[titleField.id], tables) : ''
+  const title = titleField ? displayValue(titleField, cellValue(titleField, item.record), tables) : ''
   const details = cardFields
     .filter(
       (field) =>
-        field.id !== titleField?.id && !isEmptyValue(field, item.record.values[field.id])
+        field.id !== titleField?.id && !isEmptyValue(field, cellValue(field, item.record))
     )
-    .map((field) => displayValue(field, item.record.values[field.id], tables))
+    .map((field) => displayValue(field, cellValue(field, item.record), tables))
     .filter(Boolean)
     .join(' · ')
 
@@ -851,8 +880,7 @@ function TimedEventButton({
     >
       <span className="block truncate text-[11px] font-semibold">{title || 'Untitled'}</span>
       <span className="block truncate text-[10px] tabular-nums text-muted-foreground">
-        {format(new Date(2000, 0, 1, Math.floor(minute / 60), minute % 60), 'h:mm a')}
-        {details && ` · ${details}`}
+        {[item.timeLabel, details].filter(Boolean).join(' · ')}
       </span>
     </button>
   )
@@ -874,7 +902,7 @@ function CurrentTimeLine(): React.JSX.Element {
 
 function CalendarEventButton({
   record,
-  time,
+  timeLabel,
   titleField,
   cardFields,
   imageField,
@@ -882,7 +910,7 @@ function CalendarEventButton({
   onOpenRecord
 }: {
   record: RecordRow
-  time?: string
+  timeLabel?: string
   titleField?: Field
   cardFields?: Field[]
   imageField?: Field
@@ -890,15 +918,12 @@ function CalendarEventButton({
   onOpenRecord: (recordId: string) => void
 }): React.JSX.Element {
   const tables = useProjectTables()
-  const title = titleField ? displayValue(titleField, record.values[titleField.id], tables) : ''
+  const title = titleField ? displayValue(titleField, cellValue(titleField, record), tables) : ''
   const detailFields = cardFields?.filter(
-    (field) => field.id !== titleField?.id && !isEmptyValue(field, record.values[field.id])
+    (field) => field.id !== titleField?.id && !isEmptyValue(field, cellValue(field, record))
   )
   const imageValue = imageField ? record.values[imageField.id] : undefined
   const hasImage = imageField !== undefined && !isEmptyValue(imageField, imageValue)
-  const formattedTime = time
-    ? format(new Date(2000, 0, 1, Number(time.slice(0, 2)), Number(time.slice(3))), 'h:mm a')
-    : undefined
 
   if (cardFields) {
     return (
@@ -938,6 +963,11 @@ function CalendarEventButton({
             >
               {title || 'Untitled'}
             </span>
+            {timeLabel && (
+              <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                {timeLabel}
+              </span>
+            )}
           </div>
           {detailFields && detailFields.length > 0 && (
             <div className="mt-1.5 flex flex-col gap-1.5">
@@ -945,7 +975,7 @@ function CalendarEventButton({
                 <div key={field.id} className="flex min-w-0 text-xs text-muted-foreground">
                   <ValueDisplay
                     field={field}
-                    value={record.values[field.id]}
+                    value={cellValue(field, record)}
                     className="max-w-full"
                   />
                 </div>
@@ -964,12 +994,12 @@ function CalendarEventButton({
       className="w-full shrink-0 justify-start"
       onClick={() => onOpenRecord(record.id)}
     >
-      {formattedTime && (
-        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-          {formattedTime}
+      <span className="truncate">{title || 'Untitled'}</span>
+      {timeLabel && (
+        <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">
+          {timeLabel}
         </span>
       )}
-      <span className="truncate">{title || 'Untitled'}</span>
     </Button>
   )
 }
@@ -1008,7 +1038,7 @@ function MoreEventsPopover({
             <CalendarEventButton
               key={item.record.id}
               record={item.record}
-              time={item.time}
+              timeLabel={item.timeLabel}
               titleField={titleField}
               onOpenRecord={onOpenRecord}
             />

@@ -15,7 +15,7 @@ import { FilterPopover } from '@/components/toolbar/FilterPopover'
 import { ImageFieldSelect } from '@/components/toolbar/ImageFieldSelect'
 import { SortPopover } from '@/components/toolbar/SortPopover'
 import { applyFilters, applySorts } from '@/lib/derive'
-import { displayValue, isEmptyValue } from '@/lib/fields'
+import { cellValue, displayValue, isEmptyValue } from '@/lib/fields'
 import { imageAspectRatioInfo } from '@/lib/imageAspect'
 import { useProjectTables } from '@/lib/relations'
 import * as ops from '@/lib/ops'
@@ -177,9 +177,9 @@ function GalleryCard({
   // raw value (e.g. an app-image:// URL) as text would be redundant with the
   // image itself, so treat it as if there's no title to show.
   const showTitle = titleField !== undefined && titleField.id !== coverField?.id
-  const title = showTitle ? displayValue(titleField, record.values[titleField.id], tables) : ''
+  const title = showTitle ? displayValue(titleField, cellValue(titleField, record), tables) : ''
   const detailFields = cardFields.filter(
-    (f) => f.id !== titleField?.id && !isEmptyValue(f, record.values[f.id])
+    (f) => f.id !== titleField?.id && !isEmptyValue(f, cellValue(f, record))
   )
   const hasContent = showTitle || detailFields.length > 0
   const findStates = [...(showTitle && titleField ? [titleField] : []), ...detailFields].map(
@@ -227,7 +227,7 @@ function GalleryCard({
                     {field.name}
                   </span>
                   <div className="flex text-xs">
-                    <ValueDisplay field={field} value={record.values[field.id]} />
+                    <ValueDisplay field={field} value={cellValue(field, record)} />
                   </div>
                 </div>
               ))}

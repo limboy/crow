@@ -1,7 +1,10 @@
+import { format as formatDate } from 'date-fns'
 import {
   AlignLeft,
   AudioLines,
+  CalendarClock,
   CalendarDays,
+  CalendarPlus,
   CircleChevronDown,
   Hash,
   Image as ImageIcon,
@@ -16,6 +19,7 @@ import {
 import type {
   AttachmentValue,
   ChoiceColor,
+  DateFormat,
   Field,
   FieldType,
   FilterOperator,
@@ -42,8 +46,31 @@ export const FIELD_TYPES: FieldTypeInfo[] = [
   { type: 'image', label: 'Image', icon: ImageIcon },
   { type: 'audio', label: 'Audio', icon: AudioLines },
   { type: 'attachment', label: 'Attachment', icon: Paperclip },
-  { type: 'relation', label: 'Link to records', icon: Waypoints }
+  { type: 'relation', label: 'Link to records', icon: Waypoints },
+  { type: 'createdTime', label: 'Created time', icon: CalendarPlus },
+  { type: 'lastModifiedTime', label: 'Last modified time', icon: CalendarClock }
 ]
+
+/** Fields the app fills in from the record itself. They have no stored value,
+ *  so nothing may edit, paste or import into them. */
+export function isComputedField(type: FieldType): boolean {
+  return type === 'createdTime' || type === 'lastModifiedTime'
+}
+
+/** The value a field reads for a record. Every type but the computed ones
+ *  stores it in `values`; those two derive it from the record's timestamps. */
+export function cellValue(field: Field, record: RecordRow): unknown {
+  switch (field.type) {
+    case 'createdTime':
+      return record.createdAt
+    case 'lastModifiedTime':
+      // Records written before the app tracked modification read as untouched
+      // since they were created, which is the truthful answer for them.
+      return record.updatedAt ?? record.createdAt
+    default:
+      return record.values[field.id]
+  }
+}
 
 /** Fixed 5-star scale for `rating` fields. */
 export const RATING_MAX = 5
@@ -145,7 +172,7 @@ export function recordLabel(table: Table, record: RecordRow): string {
     primary.type !== 'image' &&
     primary.type !== 'audio' &&
     primary.type !== 'attachment'
-  const text = showable ? displayValue(primary, record.values[primary.id]) : ''
+  const text = showable ? displayValue(primary, cellValue(primary, record)) : ''
   return text || 'Untitled'
 }
 
@@ -220,6 +247,71 @@ export function dateValueParts(value: unknown): { date: string; time?: string } 
   return { date: value.slice(0, 10), time }
 }
 
+/** The local calendar day and wall-clock time an absolute instant falls on,
+ *  in the same shape `dateValueParts` returns for a stored `date` value. */
+export function timestampParts(value: unknown): { date: string; time: string } | undefined {
+  const date = typeof value === 'string' || typeof value === 'number' ? new Date(value) : new Date(NaN)
+  if (Number.isNaN(date.getTime())) return undefined
+  return { date: formatDate(date, 'yyyy-MM-dd'), time: formatDate(date, 'HH:mm') }
+}
+
+/** Date parts for any field that puts records on a calendar or takes a date
+ *  filter, whichever way it stores them. */
+export function fieldDateParts(
+  field: Field,
+  value: unknown
+): { date: string; time?: string } | undefined {
+  return isComputedField(field.type) ? timestampParts(value) : dateValueParts(value)
+}
+
+export interface DateFormatInfo {
+  value: DateFormat
+  /** date-fns pattern for the date, and the time when the format shows one. */
+  pattern: string
+  /** Whether the format shows a wall-clock time as well as the date. Callers
+   *  that render the time on its own — a calendar's event chip — read this to
+   *  know whether the field is meant to show one at all. */
+  hasTime: boolean
+  /** Whether to append the computer's current UTC offset, e.g. ` (GMT+8)`. */
+  zoned: boolean
+}
+
+/** Timestamp formats a `createdTime`/`lastModifiedTime` field can render in.
+ *  The first is the default for a field that hasn't picked one. */
+export const DATE_FORMATS: DateFormatInfo[] = [
+  { value: 'slash', pattern: 'yyyy/MM/dd', hasTime: false, zoned: false },
+  { value: 'slashTime', pattern: 'yyyy/MM/dd HH:mm', hasTime: true, zoned: false },
+  { value: 'slashTimeZone', pattern: 'yyyy/MM/dd HH:mm', hasTime: true, zoned: true },
+  { value: 'dash', pattern: 'yyyy-MM-dd', hasTime: false, zoned: false },
+  { value: 'dashTime', pattern: 'yyyy-MM-dd HH:mm', hasTime: true, zoned: false },
+  { value: 'dashTimeZone', pattern: 'yyyy-MM-dd HH:mm', hasTime: true, zoned: true }
+]
+
+export function dateFormatInfo(format: DateFormat | undefined): DateFormatInfo {
+  return DATE_FORMATS.find((f) => f.value === format) ?? DATE_FORMATS[0]
+}
+
+/** The computer's offset from UTC at `date`, as `GMT+8` / `GMT-5:30`. Read at
+ *  the instant being shown so a timestamp from the other side of a DST switch
+ *  is labelled with the offset it is actually being rendered in. */
+function gmtOffset(date: Date): string {
+  const minutes = -date.getTimezoneOffset()
+  const hours = Math.floor(Math.abs(minutes) / 60)
+  const rest = Math.abs(minutes) % 60
+  return `GMT${minutes < 0 ? '-' : '+'}${hours}${rest === 0 ? '' : `:${String(rest).padStart(2, '0')}`}`
+}
+
+/** Renders a full ISO instant — a record's created/modified stamp — in local
+ *  time. Unlike a `date` cell these are absolute moments, so they move with
+ *  the computer's time zone rather than staying put. */
+export function formatTimestamp(value: unknown, format?: DateFormat): string {
+  const date = typeof value === 'string' || typeof value === 'number' ? new Date(value) : new Date(NaN)
+  if (Number.isNaN(date.getTime())) return ''
+  const info = dateFormatInfo(format)
+  const text = formatDate(date, info.pattern)
+  return info.zoned ? `${text} (${gmtOffset(date)})` : text
+}
+
 /** Plain-text rendering of a value, used for search, sorting and fallbacks.
  *  `tables` only matters for relation fields, whose text lives in another
  *  table; callers without a project in reach can leave it off and get ''. */
@@ -248,6 +340,9 @@ export function displayValue(field: Field, value: unknown, tables: Table[] = [])
       return attachmentsFrom(value)
         .map((a) => a.name)
         .join(', ')
+    case 'createdTime':
+    case 'lastModifiedTime':
+      return formatTimestamp(value, field.dateFormat)
     case 'date': {
       const parts = dateValueParts(value)
       if (!parts) return String(value)
@@ -310,6 +405,8 @@ export function operatorsFor(field: Field): OperatorInfo[] {
         ...isEmptyOps
       ]
     case 'date':
+    case 'createdTime':
+    case 'lastModifiedTime':
       return [
         { value: 'is', label: 'is', needsValue: true },
         { value: 'gt', label: 'is after', needsValue: true },

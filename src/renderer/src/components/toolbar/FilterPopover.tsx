@@ -223,7 +223,11 @@ function FilterValueInput({
     }
     case 'relation':
       return <RelationFilterValue field={field} value={value} onChange={onChange} />
+    // Created/modified stamps are matched by the local day they fall on, so
+    // they take the same day picker a date field does.
     case 'date':
+    case 'createdTime':
+    case 'lastModifiedTime':
       return (
         <Input
           type="date"

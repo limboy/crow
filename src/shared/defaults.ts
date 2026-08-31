@@ -1,5 +1,4 @@
 import {
-  CREATED_AT_DATE_SOURCE,
   type Field,
   type Project,
   type RecordRow,
@@ -49,7 +48,6 @@ export function newView(type: View['type'], name?: string): View {
         ...base,
         type,
         config: {
-          dateFieldId: CREATED_AT_DATE_SOURCE,
           hiddenFieldIds: [],
           filters: [],
           filterMatch: 'all',

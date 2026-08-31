@@ -142,6 +142,33 @@ unique within the table works. Only the **project** id is constrained by the
 | `relation` | array of **record ids** from another table in the same project |
 | `rating` | integer 1–5 (a 5-star scale) |
 | `attachment` | array of `{ url, name, size? }` — `url` must be an `app-attachment:///<projectId>/<file>` url; unlike `image`/`audio` there is no external-url form, because an attachment is handed to the OS to open rather than rendered in the app. `name` is the original file name (the on-disk file name is a generated id, so the record keeps the real name separately); `size` is byte count, when known |
+| `createdTime` | *nothing* — read from the record's own `createdAt` |
+| `lastModifiedTime` | *nothing* — read from the record's own `updatedAt`, falling back to `createdAt` |
+
+`createdTime` and `lastModifiedTime` are computed: they never appear in a
+record's `values`, and the app won't let a cell edit, paste or CSV import write
+to one. A key left in `values` under such a field's id is simply ignored, the
+way any unknown key is. Both carry a `dateFormat` saying how the timestamp
+renders — these are absolute instants, so they display in whatever time zone
+the computer is currently in:
+
+| `dateFormat` | Renders as |
+| --- | --- |
+| `slash` (default, and what an unset value means) | `2026/01/30` |
+| `slashTime` | `2026/01/30 14:00` |
+| `slashTimeZone` | `2026/01/30 14:00 (GMT+8)` |
+| `dash` | `2026-01-30` |
+| `dashTime` | `2026-01-30 14:00` |
+| `dashTimeZone` | `2026-01-30 14:00 (GMT+8)` |
+
+```json
+{
+  "id": "fld-added",
+  "name": "Added",
+  "type": "createdTime",
+  "dateFormat": "slashTime"
+}
+```
 
 `select` and `multiSelect` fields carry their choices inline:
 
@@ -213,6 +240,7 @@ render those cells as empty, which is why the format version stays at 2.
 {
   "id": "rec-1",
   "createdAt": "2026-08-20T09:00:00.000Z",
+  "updatedAt": "2026-08-24T17:31:02.114Z",
   "values": {
     "fld-title": "Дом, in which…",
     "fld-status": "ch-doing",
@@ -226,8 +254,13 @@ render those cells as empty, which is why the format version stays at 2.
 
 `values` is keyed by **field id**, from the same table. Omit a key (or use
 `null`) for an empty cell — there's no requirement that every record carry every
-field. Keys that match no field are kept on disk but ignored by the app, and `createdAt` is what a Calendar
-view falls back to when it has no date field selected.
+field. Keys that match no field are kept on disk but ignored by the app.
+
+`createdAt` is required; `updatedAt` is optional and is what a
+`lastModifiedTime` field reads, falling back to `createdAt` when it's absent —
+which is how every record written before the app tracked modification reads.
+The app rewrites `updatedAt` on each record an edit actually touched, so a file
+written by hand can leave it out entirely.
 
 ## `views`
 
@@ -276,9 +309,9 @@ it. A table with no views opens on an empty state, so include at least one. Each
 | `groupByFieldId` | table, kanban | Kanban wants a `select` field — without one the board has nothing to lay out. |
 | `rowHeight` | table | `short` (default), `medium`, `tall`, or `extraTall`. |
 | `columnWidths` | table | `{ "<fieldId>": 220 }` in pixels; unset fields use the default width. |
-| `summaries` | table | `{ "<fieldId>": "sum" }` — the statistic that field's cell shows in the bottom bar. Any field takes `none` (the default), `empty`, `filled`, `unique`, `percentEmpty`, `percentFilled`, `percentUnique`; `number` and `rating` fields also take `sum`, `average`, `median`, `min`, `max`, `range`, and `date` fields `earliest`, `latest`, `dateRange`. A summary that doesn't apply to the field's type shows nothing. |
+| `summaries` | table | `{ "<fieldId>": "sum" }` — the statistic that field's cell shows in the bottom bar. Any field takes `none` (the default), `empty`, `filled`, `unique`, `percentEmpty`, `percentFilled`, `percentUnique`; `number` and `rating` fields also take `sum`, `average`, `median`, `min`, `max`, `range`, and `date`, `createdTime` and `lastModifiedTime` fields `earliest`, `latest`, `dateRange`. A summary that doesn't apply to the field's type shows nothing. |
 | `coverFieldId` | gallery | An `image` field id. |
-| `dateFieldId` | calendar | A `date` field id, or the sentinel `"__createdAt__"` to place records by their creation time. |
+| `dateFieldId` | calendar | A `date`, `createdTime` or `lastModifiedTime` field id; unset falls back to the table's first such field. Only a `date` field can be written to, so that's the only kind where clicking an empty day creates a record on it. The old `"__createdAt__"` sentinel is gone — a file still carrying it loads as unset, and a `createdTime` field replaces it. |
 | `mode` | calendar | `month` (default), `week`, or `day`. |
 | `showHours` | calendar | In Week and Day modes, `true` (default) uses an hourly agenda: date-only records appear in its all-day row and timed records are placed at their local start time. `false` uses a compact list inside each day. |
 

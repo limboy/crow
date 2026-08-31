@@ -11,6 +11,18 @@ export type FieldType =
   | 'relation'
   | 'rating'
   | 'attachment'
+  | 'createdTime'
+  | 'lastModifiedTime'
+
+/** How a `createdTime`/`lastModifiedTime` field renders its timestamp. The
+ *  zoned forms append the computer's current UTC offset, e.g. `(GMT+8)`. */
+export type DateFormat =
+  | 'slash'
+  | 'slashTime'
+  | 'slashTimeZone'
+  | 'dash'
+  | 'dashTime'
+  | 'dashTimeZone'
 
 export type ChoiceColor =
   | 'gray'
@@ -50,6 +62,9 @@ export interface Field {
   }
   /** Only on `relation` fields: which table this one links to. */
   relation?: RelationOptions
+  /** Only on `createdTime`/`lastModifiedTime` fields: how the timestamp
+   *  renders; unset shows `yyyy/MM/dd`. */
+  dateFormat?: DateFormat
 }
 
 /** Ceiling on one attachment imported by drag-and-drop. That path carries the
@@ -75,11 +90,11 @@ export interface AttachmentValue {
 export interface RecordRow {
   id: string
   createdAt: string
+  /** When the record's contents last changed. Absent on records written before
+   *  the app tracked it, which read as unmodified since creation. */
+  updatedAt?: string
   values: Record<string, unknown>
 }
-
-/** Sentinel used by Calendar views for the record's built-in creation timestamp. */
-export const CREATED_AT_DATE_SOURCE = '__createdAt__'
 
 export type ViewType = 'table' | 'kanban' | 'gallery' | 'calendar'
 

@@ -35,7 +35,7 @@ import {
   UNCATEGORIZED,
   type RecordGroup
 } from '@/lib/derive'
-import { displayValue, isEmptyValue } from '@/lib/fields'
+import { cellValue, displayValue, isEmptyValue } from '@/lib/fields'
 import { imageAspectRatioInfo } from '@/lib/imageAspect'
 import * as ops from '@/lib/ops'
 import { useProjectTables } from '@/lib/relations'
@@ -400,9 +400,9 @@ function KanbanCard({
   className?: string
 }): React.JSX.Element {
   const tables = useProjectTables()
-  const title = titleField ? displayValue(titleField, record.values[titleField.id], tables) : ''
+  const title = titleField ? displayValue(titleField, cellValue(titleField, record), tables) : ''
   const detailFields = cardFields.filter(
-    (f) => f.id !== titleField?.id && !isEmptyValue(f, record.values[f.id])
+    (f) => f.id !== titleField?.id && !isEmptyValue(f, cellValue(f, record))
   )
   const imageValue = imageField ? record.values[imageField.id] : undefined
   const hasImage = imageField !== undefined && !isEmptyValue(imageField, imageValue)
@@ -449,7 +449,7 @@ function KanbanCard({
           <div className="mt-1.5 flex flex-col gap-1.5">
             {detailFields.map((field) => (
               <div key={field.id} className="flex min-w-0 text-xs text-muted-foreground">
-                <ValueDisplay field={field} value={record.values[field.id]} />
+                <ValueDisplay field={field} value={cellValue(field, record)} />
               </div>
             ))}
           </div>

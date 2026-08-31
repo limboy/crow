@@ -4,6 +4,8 @@ import {
   choiceById,
   choicesByIds,
   dateValueParts,
+  formatTimestamp,
+  isComputedField,
   linkedRecords,
   nextChoiceColor,
   RATING_MAX,
@@ -49,6 +51,11 @@ export function cellToText(field: Field, value: unknown, tables: Table[] = []): 
       return attachmentsFrom(value)
         .map((a) => a.name)
         .join(LIST_SEPARATOR)
+    // Nothing can paste or import a created/modified stamp back in, so there's
+    // no raw form worth preserving — export the text the column shows.
+    case 'createdTime':
+    case 'lastModifiedTime':
+      return formatTimestamp(value, field.dateFormat)
     // Dates are stored as `yyyy-MM-dd` / `yyyy-MM-ddTHH:mm` already, and image/audio as the url
     // they resolve through, so both are their own text form.
     default:
@@ -134,6 +141,10 @@ export interface ParseContext {
 export function parseCellText(field: Field, raw: string, ctx: ParseContext): ParsedCell | null {
   const text = raw.trim()
 
+  // Created/modified stamps come from the record itself. Refusing them here is
+  // what keeps a paste or CSV import from writing over one.
+  if (isComputedField(field.type)) return null
+
   // Checkbox is the one type with no empty state: a blank cell is unchecked.
   if (field.type === 'checkbox') return { value: TRUTHY.has(text.toLowerCase()) }
   if (text === '') return { value: undefined }
@@ -213,6 +224,9 @@ export function parseCellText(field: Field, raw: string, ctx: ParseContext): Par
     case 'attachment':
       // Files come from the picker or a drop, which carry real bytes; typed
       // text can't produce that, so pasting into this column is a no-op.
+      return null
+    case 'createdTime':
+    case 'lastModifiedTime':
       return null
   }
 }

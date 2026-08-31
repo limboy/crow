@@ -98,6 +98,14 @@ export function ValueEditor({
           />
         </div>
       )
+    // Kept by the record, not the user: shown as plain text with no control.
+    case 'createdTime':
+    case 'lastModifiedTime':
+      return (
+        <div className="flex h-9 items-center text-sm text-muted-foreground">
+          {displayValue(field, value)}
+        </div>
+      )
   }
 }
 

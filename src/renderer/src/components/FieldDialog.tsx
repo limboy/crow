@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Plus, X } from 'lucide-react'
-import type { Field, FieldType, SelectChoice } from '@shared/types'
+import type { DateFormat, Field, FieldType, SelectChoice } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -28,7 +28,10 @@ import {
 import {
   CHOICE_COLOR_ORDER,
   CHOICE_DOT_CLASSES,
+  DATE_FORMATS,
   FIELD_TYPES,
+  formatTimestamp,
+  isComputedField,
   nextChoiceColor
 } from '@/lib/fields'
 import { useProjectTables } from '@/lib/relations'
@@ -59,6 +62,11 @@ export function FieldDialog({
   const [newChoice, setNewChoice] = useState('')
   const [relationTableId, setRelationTableId] = useState('')
   const [relationMultiple, setRelationMultiple] = useState(true)
+  const [dateFormat, setDateFormat] = useState<DateFormat>(DATE_FORMATS[0].value)
+  // Each format is labelled by what it does to a real timestamp, so the list
+  // reads as a preview rather than a set of pattern strings. Frozen when the
+  // dialog opens so the sample doesn't tick over mid-choice.
+  const [sample, setSample] = useState(() => new Date().toISOString())
   // A relation can point at any table in the project, including its own — a
   // task with sub-tasks, say.
   const tables = useProjectTables()
@@ -71,11 +79,14 @@ export function FieldDialog({
       setNewChoice('')
       setRelationTableId(field?.relation?.tableId ?? tables[0]?.id ?? '')
       setRelationMultiple(field?.relation?.multiple ?? true)
+      setDateFormat(field?.dateFormat ?? DATE_FORMATS[0].value)
+      setSample(new Date().toISOString())
     }
   }, [open, field])
 
   const hasChoices = type === 'select' || type === 'multiSelect'
   const isRelation = type === 'relation'
+  const isTimestamp = isComputedField(type)
   // The linked table is the one thing a relation can't do without; everything
   // else about a field has a sensible default.
   const canSubmit = name.trim() !== '' && (!isRelation || relationTableId !== '')
@@ -97,6 +108,7 @@ export function FieldDialog({
       name: trimmed,
       type,
       options: hasChoices ? { choices } : undefined,
+      dateFormat: isTimestamp ? dateFormat : undefined,
       relation: isRelation
         ? {
             tableId: relationTableId,
@@ -158,6 +170,30 @@ export function FieldDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {isTimestamp && (
+            <div className="flex flex-col gap-1.5">
+              <Label>Date format</Label>
+              <Select
+                items={Object.fromEntries(
+                  DATE_FORMATS.map((info) => [info.value, formatTimestamp(sample, info.value)])
+                )}
+                value={dateFormat}
+                onValueChange={(v) => setDateFormat(v as DateFormat)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DATE_FORMATS.map((info) => (
+                    <SelectItem key={info.value} value={info.value}>
+                      {formatTimestamp(sample, info.value)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {isRelation && (
             <div className="flex flex-col gap-1.5">

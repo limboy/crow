@@ -1,5 +1,5 @@
 import type { Field, RecordRow, SummaryKey, Table } from '@shared/types'
-import { displayValue, isEmptyValue } from './fields'
+import { cellValue, displayValue, fieldDateParts, isEmptyValue } from './fields'
 
 export interface SummaryOption {
   key: SummaryKey
@@ -43,6 +43,8 @@ export function summaryOptions(field: Field): SummaryOption[] {
     case 'rating':
       return [...BASIC_SUMMARIES, ...NUMBER_SUMMARIES]
     case 'date':
+    case 'createdTime':
+    case 'lastModifiedTime':
       return [...BASIC_SUMMARIES, ...DATE_SUMMARIES]
     default:
       return BASIC_SUMMARIES
@@ -66,21 +68,27 @@ function formatPercent(part: number, total: number): string {
 
 function numberValues(field: Field, records: RecordRow[]): number[] {
   return records
-    .map((r) => r.values[field.id])
+    .map((r) => cellValue(field, r))
     .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
 }
 
-/** Date cells use ISO local date/date-time strings, so plain string order is chronological order. */
+/** Date cells use ISO local date/date-time strings and timestamps use ISO
+ *  instants, so either way plain string order is chronological order. */
 function dateValues(field: Field, records: RecordRow[]): string[] {
   return records
-    .map((r) => r.values[field.id])
+    .map((r) => cellValue(field, r))
     .filter((v): v is string => typeof v === 'string' && !isEmptyValue(field, v))
     .sort()
 }
 
-function daysBetween(from: string, to: string): number | undefined {
-  const start = new Date(`${from.slice(0, 10)}T00:00:00`).getTime()
-  const end = new Date(`${to.slice(0, 10)}T00:00:00`).getTime()
+/** Whole days apart, counted between the local calendar days the two values
+ *  fall on — a timestamp's own ISO text is in UTC and can name another day. */
+function daysBetween(field: Field, from: string, to: string): number | undefined {
+  const startDay = fieldDateParts(field, from)?.date
+  const endDay = fieldDateParts(field, to)?.date
+  if (!startDay || !endDay) return undefined
+  const start = new Date(`${startDay}T00:00:00`).getTime()
+  const end = new Date(`${endDay}T00:00:00`).getTime()
   if (Number.isNaN(start) || Number.isNaN(end)) return undefined
   return Math.round((end - start) / 86_400_000)
 }
@@ -107,7 +115,7 @@ export function summaryValue(
     case 'percentEmpty':
     case 'percentFilled': {
       const empty = records.reduce(
-        (count, r) => (isEmptyValue(field, r.values[field.id]) ? count + 1 : count),
+        (count, r) => (isEmptyValue(field, cellValue(field, r)) ? count + 1 : count),
         0
       )
       if (key === 'empty') return String(empty)
@@ -119,7 +127,7 @@ export function summaryValue(
     case 'percentUnique': {
       const seen = new Set<string>()
       records.forEach((r) => {
-        const value = r.values[field.id]
+        const value = cellValue(field, r)
         if (!isEmptyValue(field, value)) seen.add(displayValue(field, value, tables))
       })
       return key === 'unique' ? String(seen.size) : formatPercent(seen.size, total)
@@ -159,7 +167,7 @@ export function summaryValue(
       if (dates.length === 0) return '—'
       if (key === 'earliest') return displayValue(field, dates[0])
       if (key === 'latest') return displayValue(field, dates[dates.length - 1])
-      const days = daysBetween(dates[0], dates[dates.length - 1])
+      const days = daysBetween(field, dates[0], dates[dates.length - 1])
       if (days === undefined) return '—'
       return `${days.toLocaleString()} ${days === 1 ? 'day' : 'days'}`
     }

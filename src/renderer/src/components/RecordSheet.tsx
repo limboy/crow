@@ -5,7 +5,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { ValueEditor } from '@/components/editors/ValueEditor'
-import { displayValue, fieldTypeInfo } from '@/lib/fields'
+import { cellValue, displayValue, fieldTypeInfo } from '@/lib/fields'
 import { viewCoverImage } from '@/lib/imageAspect'
 import * as ops from '@/lib/ops'
 import { useProjectTables } from '@/lib/relations'
@@ -41,7 +41,7 @@ export function RecordSheet({
     titleField?.type === 'attachment'
   const title =
     record && titleField && !titleIsPath
-      ? displayValue(titleField, record.values[titleField.id], tables)
+      ? displayValue(titleField, cellValue(titleField, record), tables)
       : ''
 
   return (
@@ -65,7 +65,7 @@ export function RecordSheet({
                       <ValueEditor
                         projectId={projectId}
                         field={field}
-                        value={record.values[field.id]}
+                        value={cellValue(field, record)}
                         onChange={(value) =>
                           update(
                             (p) => ops.setRecordValue(p, record.id, field.id, value),

@@ -1,6 +1,7 @@
 import { newRecord, newView } from '@shared/defaults'
 import type { Field, RecordRow, Table } from '@shared/types'
 import { cellToText, inferFieldType, parseCellText } from './cellText'
+import { cellValue } from './fields'
 
 /**
  * Turning a CSV into a table, and a table back into CSV rows. The shape either
@@ -53,6 +54,6 @@ export function tableFromCsv(name: string, grid: string[][]): Table | null {
 export function csvRows(fields: Field[], records: RecordRow[], tables: Table[]): string[][] {
   return [
     fields.map((field) => field.name),
-    ...records.map((record) => fields.map((field) => cellToText(field, record.values[field.id], tables)))
+    ...records.map((record) => fields.map((field) => cellToText(field, cellValue(field, record), tables)))
   ]
 }

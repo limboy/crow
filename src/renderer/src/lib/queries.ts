@@ -9,7 +9,7 @@ import {
   subscribeToHistory,
   undoSnapshot
 } from '@/lib/history'
-import { patchTable } from '@/lib/ops'
+import { patchTable, touchModifiedRecords } from '@/lib/ops'
 
 export function useProjects() {
   return useQuery({ queryKey: ['projects'], queryFn: () => window.api.listProjects() })
@@ -94,7 +94,11 @@ export function useUpdateProject(id: string): ProjectUpdater {
       const updated = updater(current)
       if (updated === current) return
       recordChange(id, current, options?.coalesceKey)
-      commitProject(queryClient, id, { ...updated, updatedAt: new Date().toISOString() })
+      const now = new Date().toISOString()
+      commitProject(queryClient, id, {
+        ...touchModifiedRecords(current, updated, now),
+        updatedAt: now
+      })
     },
     [id, queryClient]
   )

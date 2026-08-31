@@ -1,4 +1,17 @@
-import type { LegacyProject, Project, Table, TableViewConfig, View } from './types'
+import type {
+  CalendarViewConfig,
+  LegacyProject,
+  Project,
+  Table,
+  TableViewConfig,
+  View
+} from './types'
+
+/** Calendar views used to offer the record's own creation timestamp as a
+ *  built-in date source, under this id. That source is gone — a `createdTime`
+ *  field is the way to put records on a calendar by when they were made — so
+ *  views still pointing at it fall back to picking a real date field. */
+const LEGACY_CREATED_AT_DATE_SOURCE = '__createdAt__'
 
 /**
  * Reads a project written by any version of the app. Projects saved before
@@ -208,6 +221,10 @@ function normalizeView(view: View): View {
       sorts: Array.isArray(config.sorts) ? config.sorts : [],
       ...(view.type === 'table'
         ? { audioPlayback: normalizeAudioPlayback(config.audioPlayback) }
+        : {}),
+      ...(view.type === 'calendar' &&
+      (config as Partial<CalendarViewConfig>).dateFieldId === LEGACY_CREATED_AT_DATE_SOURCE
+        ? { dateFieldId: undefined }
         : {})
     }
   } as View

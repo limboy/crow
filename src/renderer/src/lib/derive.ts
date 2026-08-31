@@ -7,14 +7,22 @@ import type {
   SortRule,
   Table
 } from '@shared/types'
-import { choiceById, displayValue, isEmptyValue, linkedRecordIds, operatorsFor } from './fields'
+import {
+  cellValue,
+  choiceById,
+  displayValue,
+  fieldDateParts,
+  isEmptyValue,
+  linkedRecordIds,
+  operatorsFor
+} from './fields'
 
 function fieldMap(fields: Field[]): Map<string, Field> {
   return new Map(fields.map((f) => [f.id, f]))
 }
 
 function matchesRule(record: RecordRow, rule: FilterRule, field: Field): boolean {
-  const value = record.values[field.id]
+  const value = cellValue(field, record)
   const empty = isEmptyValue(field, value)
 
   switch (rule.operator) {
@@ -65,18 +73,25 @@ function matchesRule(record: RecordRow, rule: FilterRule, field: Field): boolean
           return true
       }
     }
-    case 'date': {
-      if (typeof value !== 'string' || empty) return false
+    case 'date':
+    case 'createdTime':
+    case 'lastModifiedTime': {
+      // Created/modified stamps are absolute instants, so they're compared as
+      // the local day and time they land on — the same shape a `date` cell
+      // stores, and the shape the filter's date input produces.
+      const parts = fieldDateParts(field, value)
+      if (!parts) return false
+      const local = parts.time ? `${parts.date}T${parts.time}` : parts.date
       const target_ = String(target)
       switch (rule.operator) {
         case 'is':
           // The filter UI chooses a day. It should include timed events on
           // that day as well as all-day values.
-          return target_.length === 10 ? value.slice(0, 10) === target_ : value === target_
+          return target_.length === 10 ? parts.date === target_ : local === target_
         case 'gt':
-          return value > target_
+          return local > target_
         case 'lt':
-          return value < target_
+          return local < target_
         default:
           return true
       }
@@ -126,8 +141,8 @@ export function applyFilters(
 }
 
 function compareValues(a: RecordRow, b: RecordRow, field: Field, tables: Table[]): number {
-  const va = a.values[field.id]
-  const vb = b.values[field.id]
+  const va = cellValue(field, a)
+  const vb = cellValue(field, b)
   const emptyA = isEmptyValue(field, va)
   const emptyB = isEmptyValue(field, vb)
   if (emptyA && emptyB) return 0
@@ -140,7 +155,11 @@ function compareValues(a: RecordRow, b: RecordRow, field: Field, tables: Table[]
       return (va as number) - (vb as number)
     case 'checkbox':
       return (va === true ? 0 : 1) - (vb === true ? 0 : 1)
+    // Both forms sort chronologically as plain strings: `date` cells are
+    // ISO-shaped local values, timestamps are ISO instants in UTC.
     case 'date':
+    case 'createdTime':
+    case 'lastModifiedTime':
       return String(va).localeCompare(String(vb))
     case 'select': {
       const choices = field.options?.choices ?? []
@@ -204,7 +223,7 @@ export function groupRecords(
     }))
     const uncategorized: RecordGroup = { key: UNCATEGORIZED, label: 'Uncategorized', records: [] }
     for (const record of records) {
-      const choice = choiceById(field, record.values[field.id])
+      const choice = choiceById(field, cellValue(field, record))
       if (choice) groups.find((g) => g.key === choice.id)!.records.push(record)
       else uncategorized.records.push(record)
     }
@@ -215,7 +234,7 @@ export function groupRecords(
     const checked: RecordGroup = { key: 'checked', label: 'Checked', records: [] }
     const unchecked: RecordGroup = { key: 'unchecked', label: 'Unchecked', records: [] }
     for (const record of records) {
-      ;(record.values[field.id] === true ? checked : unchecked).records.push(record)
+      ;(cellValue(field, record) === true ? checked : unchecked).records.push(record)
     }
     return [checked, unchecked]
   }
@@ -223,7 +242,7 @@ export function groupRecords(
   const buckets = new Map<string, RecordGroup>()
   const empty: RecordGroup = { key: UNCATEGORIZED, label: 'Empty', records: [] }
   for (const record of records) {
-    const text = displayValue(field, record.values[field.id], tables)
+    const text = displayValue(field, cellValue(field, record), tables)
     if (text === '') {
       empty.records.push(record)
       continue

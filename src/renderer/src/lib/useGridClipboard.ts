@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { Field, RecordRow, Table } from '@shared/types'
 import { cellToText } from './cellText'
 import { isBlankGrid, parseDelimited, serializeDelimited } from './csv'
+import { cellValue } from './fields'
 import * as ops from './ops'
 import type { TableUpdater } from './queries'
 import { isTextEntry } from './utils'
@@ -77,7 +78,7 @@ export function useGridClipboard(clipboard: GridClipboard): void {
       if (selection && !selection.isCollapsed) return
 
       const rowValues = (record: RecordRow): string[] =>
-        fields.map((field) => cellToText(field, record.values[field.id], tables))
+        fields.map((field) => cellToText(field, cellValue(field, record), tables))
 
       let grid: string[][]
       if (selectedRowIds.size > 0) {
@@ -88,7 +89,7 @@ export function useGridClipboard(clipboard: GridClipboard): void {
         const record = records.find((r) => r.id === selectedCell.recordId)
         const field = fields.find((f) => f.id === selectedCell.fieldId)
         if (!record || !field) return
-        grid = [[cellToText(field, record.values[field.id], tables)]]
+        grid = [[cellToText(field, cellValue(field, record), tables)]]
       } else {
         return
       }
