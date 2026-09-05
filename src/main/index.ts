@@ -4,6 +4,7 @@ import { pathToFileURL } from 'url'
 import { registerIpc } from './ipc'
 import { registerImageProtocol } from './images'
 import { registerAudioProtocol } from './audio'
+import { registerVideoProtocol } from './video'
 import { registerAttachmentProtocol } from './attachments'
 import { seedIfEmpty } from './seed'
 import { watchProjects } from './watcher'
@@ -13,6 +14,14 @@ import { buildAppMenu } from './menu'
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app-image', privileges: { secure: true, supportFetchAPI: true, stream: true } },
   { scheme: 'app-audio', privileges: { secure: true, supportFetchAPI: true, stream: true } },
+  // `corsEnabled` on video alone: the cover frame is captured by drawing the
+  // video into a canvas, and a canvas drawn from a foreign origin can't be
+  // exported. The handler answers with `access-control-allow-origin`, so the
+  // frame comes out readable.
+  {
+    scheme: 'app-video',
+    privileges: { secure: true, supportFetchAPI: true, stream: true, corsEnabled: true }
+  },
   { scheme: 'app-attachment', privileges: { secure: true, supportFetchAPI: true, stream: true } }
 ])
 
@@ -72,6 +81,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(buildAppMenu(() => createWindow()))
   registerImageProtocol()
   registerAudioProtocol()
+  registerVideoProtocol()
   registerAttachmentProtocol()
   registerIpc()
   await seedIfEmpty()

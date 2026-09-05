@@ -13,6 +13,7 @@ import {
   SquareCheck,
   Star,
   Tags,
+  Video,
   Waypoints,
   type LucideIcon
 } from 'lucide-react'
@@ -25,7 +26,8 @@ import type {
   FilterOperator,
   RecordRow,
   SelectChoice,
-  Table
+  Table,
+  VideoValue
 } from '@shared/types'
 
 export interface FieldTypeInfo {
@@ -45,6 +47,7 @@ export const FIELD_TYPES: FieldTypeInfo[] = [
   { type: 'url', label: 'URL', icon: Link2 },
   { type: 'image', label: 'Image', icon: ImageIcon },
   { type: 'audio', label: 'Audio', icon: AudioLines },
+  { type: 'video', label: 'Video', icon: Video },
   { type: 'attachment', label: 'Attachment', icon: Paperclip },
   { type: 'relation', label: 'Link to records', icon: Waypoints },
   { type: 'createdTime', label: 'Created time', icon: CalendarPlus },
@@ -166,14 +169,45 @@ export function linkedRecords(field: Field, value: unknown, tables: Table[]): Re
 export function recordLabel(table: Table, record: RecordRow): string {
   const primary = table.fields[0]
   // Image/audio fields display as internal file paths (e.g. app-image:///...),
-  // and attachment as a raw array, neither meaningful as a record label.
+  // and video/attachment as a raw object or array, none meaningful as a
+  // record label.
   const showable =
     primary &&
     primary.type !== 'image' &&
     primary.type !== 'audio' &&
+    primary.type !== 'video' &&
     primary.type !== 'attachment'
   const text = showable ? displayValue(primary, cellValue(primary, record)) : ''
   return text || 'Untitled'
+}
+
+/** A `video` cell's value, or undefined when the cell holds anything that
+ *  isn't shaped like one. */
+export function videoFrom(value: unknown): VideoValue | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const video = value as VideoValue
+  return typeof video.url === 'string' && video.url !== '' ? video : undefined
+}
+
+/** What a video cell shows for itself when there's no poster to show. */
+export function videoLabel(video: VideoValue): string {
+  return video.name ?? 'Video'
+}
+
+/** Whether a view can feature this field as a card cover: an image, or a
+ *  video by way of the frame captured from it. */
+export function isCoverField(field: Field): boolean {
+  return field.type === 'image' || field.type === 'video'
+}
+
+/** The image url a field contributes when a view features it as a cover or
+ *  thumbnail. An `image` cell is the url itself; a `video` cell is the frame
+ *  captured from it, which is why a video field can be picked as a cover at
+ *  all. Anything else — or a video with no poster yet — has none. */
+export function coverImageUrl(field: Field, value: unknown): string | undefined {
+  if (field.type === 'video') return videoFrom(value)?.poster
+  if (field.type !== 'image') return undefined
+  return typeof value === 'string' && value !== '' ? value : undefined
 }
 
 /** An `attachment` cell's well-formed files, filtering out anything that
@@ -213,6 +247,8 @@ export function isEmptyValue(field: Field, value: unknown): boolean {
       return !Array.isArray(value) || value.length === 0
     case 'select':
       return choiceById(field, value) === undefined
+    case 'video':
+      return videoFrom(value) === undefined
     case 'number':
     case 'rating':
       return typeof value !== 'number'
@@ -340,6 +376,10 @@ export function displayValue(field: Field, value: unknown, tables: Table[] = [])
       return attachmentsFrom(value)
         .map((a) => a.name)
         .join(', ')
+    case 'video': {
+      const video = videoFrom(value)
+      return video ? (video.name ?? video.url) : ''
+    }
     case 'createdTime':
     case 'lastModifiedTime':
       return formatTimestamp(value, field.dateFormat)
@@ -426,6 +466,7 @@ export function operatorsFor(field: Field): OperatorInfo[] {
       ]
     case 'image':
     case 'audio':
+    case 'video':
     case 'attachment':
       return isEmptyOps
   }

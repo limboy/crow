@@ -52,6 +52,7 @@ import { DateEditor } from '@/components/editors/DateEditor'
 import { ImageEditor } from '@/components/editors/ImageEditor'
 import { RelationEditor } from '@/components/editors/RelationEditor'
 import { SelectEditor } from '@/components/editors/SelectEditor'
+import { VideoEditor } from '@/components/editors/VideoEditor'
 import { FieldsPopover } from '@/components/toolbar/FieldsPopover'
 import { FilterPopover } from '@/components/toolbar/FilterPopover'
 import { SortPopover } from '@/components/toolbar/SortPopover'
@@ -604,7 +605,8 @@ export function TableView({
   }
 
   const groupableFields = table.fields.filter(
-    (f) => f.type !== 'image' && f.type !== 'audio' && f.type !== 'attachment'
+    (f) =>
+      f.type !== 'image' && f.type !== 'audio' && f.type !== 'video' && f.type !== 'attachment'
   )
 
   const renderRecordRow = (record: RecordRow, number: number): React.JSX.Element => {
@@ -1189,8 +1191,16 @@ function CellContent({
     field.type === 'relation' && Array.isArray(value) && value.length > 1
   const anchorRef = useRef<HTMLDivElement>(null)
   const editFinishedRef = useRef(false)
-  const isFileField = field.type === 'image' || field.type === 'audio' || field.type === 'attachment'
-  const fileDrop = useFileDrop(field.type === 'audio' ? 'audio' : 'image', projectId, onChange)
+  const isFileField =
+    field.type === 'image' ||
+    field.type === 'audio' ||
+    field.type === 'video' ||
+    field.type === 'attachment'
+  const fileDrop = useFileDrop(
+    field.type === 'audio' || field.type === 'video' ? field.type : 'image',
+    projectId,
+    onChange
+  )
   const attachmentDrop = useAttachmentDrop(projectId, value, onChange)
   const activeFileDrop = field.type === 'attachment' ? attachmentDrop : fileDrop
 
@@ -1244,6 +1254,7 @@ function CellContent({
     field.type === 'date' ||
     field.type === 'image' ||
     field.type === 'audio' ||
+    field.type === 'video' ||
     field.type === 'attachment' ||
     field.type === 'relation'
   ) {
@@ -1259,7 +1270,11 @@ function CellContent({
             wrap ? 'flex-wrap content-start items-start gap-1 py-1.5' : 'items-center',
             !wrap && hasMultipleRelationRecords && 'py-1.5',
             selected && !editing && 'ring-2 ring-inset ring-ring',
-            isFileField && activeFileDrop.isOver && 'bg-accent ring-2 ring-inset ring-primary'
+            isFileField && activeFileDrop.isOver && 'bg-accent ring-2 ring-inset ring-primary',
+            // A dropped file only reaches the cell once it's stored — and a
+            // video not until its cover is captured — so the cell says so
+            // meanwhile rather than looking like the drop was ignored.
+            isFileField && activeFileDrop.busy && 'animate-pulse bg-accent/60'
           )}
           onClick={onSelect}
           onDoubleClick={() => onEdit()}
@@ -1281,7 +1296,10 @@ function CellContent({
         <PopoverContent
           className={cn(
             'p-0',
-            field.type === 'image' || field.type === 'audio' || field.type === 'attachment'
+            field.type === 'image' ||
+            field.type === 'audio' ||
+            field.type === 'video' ||
+            field.type === 'attachment'
               ? 'w-72 p-3'
               : field.type === 'date' || field.type === 'relation'
                 ? 'w-64'
@@ -1297,6 +1315,8 @@ function CellContent({
             <ImageEditor projectId={projectId} value={value} onChange={onChange} />
           ) : field.type === 'audio' ? (
             <AudioEditor projectId={projectId} value={value} onChange={onChange} />
+          ) : field.type === 'video' ? (
+            <VideoEditor projectId={projectId} value={value} onChange={onChange} />
           ) : field.type === 'attachment' ? (
             <AttachmentEditor projectId={projectId} value={value} onChange={onChange} />
           ) : field.type === 'relation' ? (

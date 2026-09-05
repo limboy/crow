@@ -17,6 +17,7 @@ import { DateEditor } from './DateEditor'
 import { ImageEditor } from './ImageEditor'
 import { RelationEditor } from './RelationEditor'
 import { SelectEditor } from './SelectEditor'
+import { VideoEditor } from './VideoEditor'
 
 /** Full-size editor for one field value, used in the record detail sheet. */
 export function ValueEditor({
@@ -86,6 +87,15 @@ export function ValueEditor({
       )
     case 'audio':
       return <AudioEditor projectId={projectId} value={value} onChange={onChange} />
+    case 'video':
+      return (
+        <VideoEditor
+          projectId={projectId}
+          value={value}
+          onChange={onChange}
+          aspectRatio={imageAspectRatio}
+        />
+      )
     case 'attachment':
       return <AttachmentEditor projectId={projectId} value={value} onChange={onChange} />
     case 'rating':

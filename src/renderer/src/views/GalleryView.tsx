@@ -15,7 +15,14 @@ import { FilterPopover } from '@/components/toolbar/FilterPopover'
 import { ImageFieldSelect } from '@/components/toolbar/ImageFieldSelect'
 import { SortPopover } from '@/components/toolbar/SortPopover'
 import { applyFilters, applySorts } from '@/lib/derive'
-import { cellValue, displayValue, isEmptyValue } from '@/lib/fields'
+import {
+  cellValue,
+  coverImageUrl,
+  displayValue,
+  fieldTypeInfo,
+  isCoverField,
+  isEmptyValue
+} from '@/lib/fields'
 import { imageAspectRatioInfo } from '@/lib/imageAspect'
 import { useProjectTables } from '@/lib/relations'
 import * as ops from '@/lib/ops'
@@ -39,7 +46,7 @@ export function GalleryView({
   // Sorting by a relation field compares the labels of the linked records,
   // which live in a sibling table.
   const tables = useProjectTables()
-  const imageFields = table.fields.filter((f) => f.type === 'image')
+  const imageFields = table.fields.filter(isCoverField)
   const coverField = imageFields.find((f) => f.id === config.coverFieldId)
   const [addFieldOpen, setAddFieldOpen] = useState(false)
 
@@ -123,7 +130,13 @@ export function GalleryView({
             />
           ))}
           <button
-            className="flex min-h-40 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed text-sm text-muted-foreground transition-colors hover:border-ring hover:text-foreground"
+            className={cn(
+              'flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed text-sm text-muted-foreground transition-colors hover:border-ring hover:text-foreground',
+              // Left to stretch to the cards beside it, so it ends where they
+              // do however tall their covers make them. With no cards to take
+              // its height from it needs a tile-sized minimum of its own.
+              derived.length === 0 && 'min-h-40'
+            )}
             onClick={() => update((p) => ops.addRecord(p))}
           >
             <Plus className="size-4" />
@@ -170,8 +183,11 @@ function GalleryCard({
   find: ViewFindController
   onClick: () => void
 }): React.JSX.Element {
-  const coverValue = coverField ? record.values[coverField.id] : undefined
-  const hasCover = coverField !== undefined && !isEmptyValue(coverField, coverValue)
+  // A video field covers a card with the still captured from it, so what's
+  // drawn here is an image url either way — or nothing, for a video whose
+  // cover hasn't been captured.
+  const coverUrl = coverField ? coverImageUrl(coverField, record.values[coverField.id]) : undefined
+  const CoverPlaceholderIcon = coverField ? fieldTypeInfo(coverField.type).icon : ImageIcon
   const tables = useProjectTables()
   // If the title field is the same field used as the cover image, showing its
   // raw value (e.g. an app-image:// URL) as text would be redundant with the
@@ -195,6 +211,11 @@ function GalleryCard({
       data-find-active={cardFindState.active ? 'true' : undefined}
       className={cn(
         'overflow-hidden rounded-lg border bg-card shadow-xs transition-shadow hover:shadow-md',
+        // Cards otherwise stretch to their grid row, which is as tall as the
+        // New record tile. A card that is nothing but its cover has no body to
+        // absorb that, so it would end in a strip of blank card — let it stop
+        // at the cover instead.
+        coverField && !hasContent && 'self-start',
         cardFindState.matched && 'ring-4 ring-find-match',
         cardFindState.active && 'ring-find-highlight'
       )}
@@ -207,10 +228,10 @@ function GalleryCard({
             imageAspectRatioInfo(aspectRatio).className
           )}
         >
-          {hasCover ? (
-            <img src={String(coverValue)} alt="" className="h-full w-full object-cover" />
+          {coverUrl ? (
+            <img src={coverUrl} alt="" className="h-full w-full object-cover" />
           ) : (
-            <ImageIcon className="size-6 text-muted-foreground/40" />
+            <CoverPlaceholderIcon className="size-6 text-muted-foreground/40" />
           )}
         </div>
       )}

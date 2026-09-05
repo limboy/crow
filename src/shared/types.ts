@@ -8,6 +8,7 @@ export type FieldType =
   | 'url'
   | 'image'
   | 'audio'
+  | 'video'
   | 'relation'
   | 'rating'
   | 'attachment'
@@ -85,6 +86,21 @@ export interface AttachmentValue {
   /** Bytes, when known — absent only for a url written by hand into a
    *  project file rather than imported through the app or CLI. */
   size?: number
+}
+
+/** One video attached to a `video` cell. `url` is an
+ *  `app-video:///<projectId>/<file>` url, or any external `http(s)` url —
+ *  like `image`/`audio`, and unlike `attachment`, a video may live elsewhere.
+ *  The app never plays it inline: clicking hands the url to the OS, so what a
+ *  cell shows is `poster`, a still grabbed a quarter of the way in and stored
+ *  as an ordinary image asset. Both `name` (the original file name) and
+ *  `poster` are absent until something produces them — a url typed by hand or
+ *  a video added by the CLI has neither. */
+export interface VideoValue {
+  url: string
+  name?: string
+  /** `app-image:///<projectId>/<file>` url of the captured frame. */
+  poster?: string
 }
 
 export interface RecordRow {
@@ -240,7 +256,7 @@ export interface LegacyProject {
 
 /** Where an asset sits inside a `.crow` archive, and which project folder it
  *  is restored to. The archive mirrors the project's own layout. */
-export type ProjectAssetKind = 'image' | 'audio' | 'attachment'
+export type ProjectAssetKind = 'image' | 'audio' | 'video' | 'attachment'
 
 /** One image/audio file carried inside a version ≤2 export, base64-encoded.
  *  Archives store the bytes as their own entries instead. */
@@ -328,18 +344,26 @@ export interface Api {
   /** Reads a CSV/TSV file the user picks as raw text — the renderer parses it,
    *  since the clipboard needs the same parser; null if cancelled. */
   importCsv: () => Promise<CsvFile | null>
-  /** Images, audio and attachments are stored alongside the project that owns
-   *  them, so every picker/import call needs to know which project it's for. */
+  /** Images, audio, video and attachments are stored alongside the project
+   *  that owns them, so every picker/import call needs to know which project
+   *  it's for. */
   pickImage: (projectId: string) => Promise<string | null>
   pickAudio: (projectId: string) => Promise<string | null>
+  /** Video comes back as a whole cell value rather than a url: the app stores
+   *  the file under a generated name, so this is the only point the original
+   *  one is still known. The cover frame is captured afterwards, in the
+   *  renderer, where a decoder lives. */
+  pickVideo: (projectId: string) => Promise<VideoValue | null>
   /** Copies or downloads the current media file to a path the user picks. */
   saveImageAs: (url: string) => Promise<boolean>
   saveAudioAs: (url: string) => Promise<boolean>
+  saveVideoAs: (url: string) => Promise<boolean>
   /** Lets the user pick one or more arbitrary files; null if cancelled. */
   pickAttachments: (projectId: string) => Promise<AttachmentValue[] | null>
   /** Writes dropped file bytes (e.g. from a drag-and-drop) into local storage. */
   importImageData: (projectId: string, name: string, data: ArrayBuffer) => Promise<string | null>
   importAudioData: (projectId: string, name: string, data: ArrayBuffer) => Promise<string | null>
+  importVideoData: (projectId: string, name: string, data: ArrayBuffer) => Promise<string | null>
   importAttachmentData: (
     projectId: string,
     name: string,
@@ -350,6 +374,10 @@ export interface Api {
    *  would run the preload against that file's contents. False if the url
    *  doesn't name a stored file, or the OS refused to open it. */
   openAttachment: (url: string) => Promise<boolean>
+  /** Plays a video in whatever the OS opens that type with — the app never
+   *  renders one inline, for the same reason attachments aren't linked to.
+   *  External `http(s)` urls are handed to the browser instead. */
+  openVideo: (url: string) => Promise<boolean>
   /** Copies a stored attachment out to a path the user picks; false if cancelled. */
   saveAttachmentAs: (url: string, name: string) => Promise<boolean>
   /** Fires when project files change on disk outside the app; returns unsubscribe. */

@@ -13,6 +13,7 @@ import { importImageData, pickImage, saveImageAs } from './images'
 import { exportProject, importProject } from './transfer'
 import { exportCsv, importCsv } from './csv'
 import { importAudioData, pickAudio, saveAudioAs } from './audio'
+import { importVideoData, openVideo, pickVideo, saveVideoAs } from './video'
 import {
   importAttachmentData,
   openAttachment,
@@ -84,6 +85,16 @@ export function registerIpc(): void {
   ipcMain.handle('audio:saveAs', (e, url: string) =>
     saveAudioAs(BrowserWindow.fromWebContents(e.sender), url)
   )
+  ipcMain.handle('video:pick', (e, projectId: string) =>
+    pickVideo(BrowserWindow.fromWebContents(e.sender), projectId)
+  )
+  ipcMain.handle('video:importData', (_e, projectId: string, name: string, data: ArrayBuffer) =>
+    importVideoData(projectId, name, data)
+  )
+  ipcMain.handle('video:saveAs', (e, url: string) =>
+    saveVideoAs(BrowserWindow.fromWebContents(e.sender), url)
+  )
+  ipcMain.handle('video:open', (_e, url: string) => openVideo(url))
   ipcMain.handle('attachments:pick', (e, projectId: string) =>
     pickAttachments(BrowserWindow.fromWebContents(e.sender), projectId)
   )

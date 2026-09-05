@@ -15,6 +15,7 @@ import type {
 import { getProject, saveProject } from './storage'
 import { imagesDir } from './images'
 import { audioDir } from './audio'
+import { videoDir } from './video'
 import { attachmentsDir } from './attachments'
 
 const FORMAT = 'crow-project'
@@ -38,6 +39,7 @@ const MANIFEST_ENTRY = 'project.json'
 const ASSET_KINDS: Record<ProjectAssetKind, { folder: string; dir: (id: string) => string }> = {
   image: { folder: 'images', dir: imagesDir },
   audio: { folder: 'audio', dir: audioDir },
+  video: { folder: 'video', dir: videoDir },
   attachment: { folder: 'attachments', dir: attachmentsDir }
 }
 
@@ -64,7 +66,7 @@ async function* readAssets(
     try {
       names = await fs.readdir(from)
     } catch {
-      continue // a project with no images/audio/attachments has no such folder
+      continue // a project with no images/audio/video/attachments has no such folder
     }
     for (const name of names) {
       if (!isSafeAssetName(name)) continue
@@ -190,7 +192,7 @@ function parseManifest(raw: string): ProjectManifest {
 }
 
 /**
- * Points the project's `app-image://`/`app-audio://`/`app-attachment://` urls
+ * Points the project's `app-image://`/`app-audio://`/`app-video://`/`app-attachment://` urls
  * at its new id. Done over the serialized project so it covers every place a
  * url can sit (record values of any shape) without walking the structure by
  * hand; external http urls are left alone because only the local schemes match.
@@ -200,6 +202,7 @@ function remapAssetUrls(project: Project, fromId: string, toId: string): Project
   const remapped = JSON.stringify(project)
     .replaceAll(`app-image:///${fromId}/`, `app-image:///${toId}/`)
     .replaceAll(`app-audio:///${fromId}/`, `app-audio:///${toId}/`)
+    .replaceAll(`app-video:///${fromId}/`, `app-video:///${toId}/`)
     .replaceAll(`app-attachment:///${fromId}/`, `app-attachment:///${toId}/`)
   return JSON.parse(remapped) as Project
 }

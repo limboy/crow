@@ -1,11 +1,16 @@
 import { useRef, useState } from 'react'
 import { MAX_ATTACHMENT_BYTES, type AttachmentValue } from '@shared/types'
 import { attachmentsFrom, formatFileSize } from './fields'
+import { importVideoValue } from './videoPoster'
 
 const hasFiles = (e: React.DragEvent): boolean => Array.from(e.dataTransfer.types).includes('Files')
 
 export interface FileDropHandlers {
   isOver: boolean
+  /** True from the drop until the file is stored (and, for a video, its cover
+   *  captured). The cell only changes once that finishes, so without this the
+   *  drop would look like it did nothing for as long as it takes. */
+  busy: boolean
   onDragOver: (e: React.DragEvent) => void
   onDragLeave: (e: React.DragEvent) => void
   onDrop: (e: React.DragEvent) => void
@@ -14,19 +19,22 @@ export interface FileDropHandlers {
 /**
  * Wires up dropping a single OS file (e.g. dragged from Finder/Explorer) onto
  * an element: imports it into local storage and calls `onChange` with the
- * resulting `app-image://`/`app-audio://` URL. Returns drag handlers to spread
- * onto the drop target, plus `isOver` for a hover affordance.
+ * value the cell should hold — the resulting `app-image://`/`app-audio://` URL,
+ * or a whole `VideoValue` for a video, whose cover frame is captured on the
+ * way in. Returns drag handlers to spread onto the drop target, plus `isOver`
+ * and `busy` for hover and in-progress affordances.
  *
  * Reads the file's bytes directly (`File.arrayBuffer()`) rather than going
  * through `webUtils.getPathForFile`, which has proven unreliable for Files
  * crossing the context bridge from a drop event.
  */
 export function useFileDrop(
-  kind: 'image' | 'audio',
+  kind: 'image' | 'audio' | 'video',
   projectId: string,
-  onChange: (value: string) => void
+  onChange: (value: unknown) => void
 ): FileDropHandlers {
   const [isOver, setIsOver] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   const onDragOver = (e: React.DragEvent): void => {
     if (!hasFiles(e)) return
@@ -48,18 +56,24 @@ export function useFileDrop(
     setIsOver(false)
     const file = e.dataTransfer.files[0]
     if (!file) return
-    const importData = kind === 'image' ? window.api.importImageData : window.api.importAudioData
+    const importFile = (data: ArrayBuffer): Promise<unknown> => {
+      if (kind === 'video') return importVideoValue(projectId, file.name, data)
+      const importData = kind === 'image' ? window.api.importImageData : window.api.importAudioData
+      return importData(projectId, file.name, data)
+    }
+    setBusy(true)
     void file
       .arrayBuffer()
-      .then((data) => importData(projectId, file.name, data))
-      .then((url) => {
-        if (url) onChange(url)
+      .then(importFile)
+      .then((imported) => {
+        if (imported) onChange(imported)
         else console.error(`[useFileDrop] failed to import dropped ${kind} file: ${file.name}`)
       })
       .catch((err) => console.error(`[useFileDrop] error importing dropped ${kind} file`, err))
+      .finally(() => setBusy(false))
   }
 
-  return { isOver, onDragOver, onDragLeave, onDrop }
+  return { isOver, busy, onDragOver, onDragLeave, onDrop }
 }
 
 export interface AttachmentDropHandlers extends FileDropHandlers {
@@ -83,6 +97,7 @@ export function useAttachmentDrop(
   onChange: (files: AttachmentValue[]) => void
 ): AttachmentDropHandlers {
   const [isOver, setIsOver] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   // Tracks the cell's files across renders *and* across appends that haven't
   // been rendered back yet, so an import landing before React re-renders still
@@ -133,6 +148,7 @@ export function useAttachmentDrop(
       })
     }
     if (files.length === 0) return
+    setBusy(true)
     // Each import settles on its own: one unreadable file in a multi-file drop
     // shouldn't reject the batch and discard the ones that did import.
     void Promise.all(
@@ -154,7 +170,8 @@ export function useAttachmentDrop(
         }
       })
       .catch((err) => console.error('[useAttachmentDrop] error handling dropped files', err))
+      .finally(() => setBusy(false))
   }
 
-  return { isOver, onDragOver, onDragLeave, onDrop, append }
+  return { isOver, busy, onDragOver, onDragLeave, onDrop, append }
 }

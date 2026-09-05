@@ -1,7 +1,7 @@
 # The `.crow` file format
 
 A `.crow` file is one project — its tables, their schemas, records and views,
-and every image/audio/attachment file it owns. It's what **Export…** writes and
+and every image/audio/video/attachment file it owns. It's what **Export…** writes and
 **Import project…** reads.
 
 It's an ordinary **zip archive**: a `project.json` describing the project,
@@ -17,6 +17,8 @@ Reading List.crow
 │   └── 8c1e…-40af.png    ← raw bytes, byte-identical to the original
 ├── audio/
 │   └── 4b02…-77de.mp3
+├── video/
+│   └── 9d47…-2c10.mp4
 └── attachments/
     └── 3f9a…-91bc.pdf
 ```
@@ -78,7 +80,7 @@ as empty. Get it right in the generator.
 
 | Key | Required | Notes |
 | --- | --- | --- |
-| `id` | yes | Any string matching `^[a-zA-Z0-9-]+$` — a UUID by convention. **Import replaces it** with a fresh id, so pick anything unique; it only has to match the `app-image:///<id>/…` (or `app-audio:///…`, `app-attachment:///…`) urls inside the same file. |
+| `id` | yes | Any string matching `^[a-zA-Z0-9-]+$` — a UUID by convention. **Import replaces it** with a fresh id, so pick anything unique; it only has to match the `app-image:///<id>/…` (or `app-audio:///…`, `app-video:///…`, `app-attachment:///…`) urls inside the same file. |
 | `name` | yes | Shown in the sidebar. Trimmed; falls back to `Untitled` if blank. |
 | `icon` | no | Reserved — carried through saves but not rendered yet. |
 | `createdAt` | yes | ISO-8601. Preserved on import. |
@@ -109,8 +111,8 @@ as empty. Get it right in the generator.
 record, choice and view ids only have to be unique *within* their own table;
 the only ids that cross a table boundary are a relation field's `tableId` and
 the record ids it stores (see [`relation` fields](#relation-fields) below).
-Media is the other shared thing: images, audio and attachments each live in
-their own per-project folder, so any table can use any of them.
+Media is the other shared thing: images, audio, video and attachments each
+live in their own per-project folder, so any table can use any of them.
 
 Ids for fields, records, choices, tables and views are opaque strings — anything
 unique within the table works. Only the **project** id is constrained by the
@@ -139,6 +141,7 @@ unique within the table works. Only the **project** id is constrained by the
 | `url` | string |
 | `image` | an `app-image:///<projectId>/<file>` url, or any external `http(s)` url |
 | `audio` | an `app-audio:///<projectId>/<file>` url, or any external `http(s)` url |
+| `video` | `{ url, name?, poster? }` — `url` is an `app-video:///<projectId>/<file>` url or any external `http(s)` url; `name` is the original file name, for display (the on-disk file is named with a generated id); `poster` is an `app-image:///…` url for the cover frame. The app never plays a video inline — clicking hands the url to the OS player — so `poster` is what a cell, and any view featuring the field as a card cover, actually shows. It's captured by the app a quarter of the way into the video and stored as an ordinary image asset, so a value written by hand or by the CLI simply has none until the app captures one |
 | `relation` | array of **record ids** from another table in the same project |
 | `rating` | integer 1–5 (a 5-star scale) |
 | `attachment` | array of `{ url, name, size? }` — `url` must be an `app-attachment:///<projectId>/<file>` url; unlike `image`/`audio` there is no external-url form, because an attachment is handed to the OS to open rather than rendered in the app. `name` is the original file name (the on-disk file name is a generated id, so the record keeps the real name separately); `size` is byte count, when known |
@@ -310,7 +313,7 @@ it. A table with no views opens on an empty state, so include at least one. Each
 | `rowHeight` | table | `short` (default), `medium`, `tall`, or `extraTall`. |
 | `columnWidths` | table | `{ "<fieldId>": 220 }` in pixels; unset fields use the default width. |
 | `summaries` | table | `{ "<fieldId>": "sum" }` — the statistic that field's cell shows in the bottom bar. Any field takes `none` (the default), `empty`, `filled`, `unique`, `percentEmpty`, `percentFilled`, `percentUnique`; `number` and `rating` fields also take `sum`, `average`, `median`, `min`, `max`, `range`, and `date`, `createdTime` and `lastModifiedTime` fields `earliest`, `latest`, `dateRange`. A summary that doesn't apply to the field's type shows nothing. |
-| `coverFieldId` | gallery | An `image` field id. |
+| `coverFieldId` | gallery | An `image` or `video` field id — a video is featured by its captured `poster`. |
 | `dateFieldId` | calendar | A `date`, `createdTime` or `lastModifiedTime` field id; unset falls back to the table's first such field. Only a `date` field can be written to, so that's the only kind where clicking an empty day creates a record on it. The old `"__createdAt__"` sentinel is gone — a file still carrying it loads as unset, and a `createdTime` field replaces it. |
 | `mode` | calendar | `month` (default), `week`, or `day`. |
 | `showHours` | calendar | In Week and Day modes, `true` (default) uses an hourly agenda: date-only records appear in its all-day row and timed records are placed at their local start time. `false` uses a compact list inside each day. |
@@ -325,19 +328,24 @@ means what you extract is exactly what was imported.
 ```
 images/cover.png
 audio/4b02…-77de.mp3
+video/9d47…-2c10.mp4
 attachments/3f9a…-91bc.pdf
 ```
 
-- The **folder** decides where the file is restored: `images/`, `audio/` or
-  `attachments/`. Any other top-level folder is ignored on import.
+- The **folder** decides where the file is restored: `images/`, `audio/`,
+  `video/` or `attachments/`. Any other top-level folder is ignored on import.
 - The **name** must be a bare file name — no nested directories. Names
   containing `/` or `\`, or starting with `.`, are skipped, so
   `attachments/../../evil.png` can't escape the project folder. The extension
   matters (it's what the browser sniffs); the stem doesn't, though the app
   itself uses UUIDs to avoid collisions.
 - A record references an asset by url, not by path:
-  `app-image:///<projectId>/<name>` (or `app-audio:///…`, `app-attachment:///…`).
+  `app-image:///<projectId>/<name>` (or `app-audio:///…`, `app-video:///…`,
+  `app-attachment:///…`).
   The `<projectId>` **must match `project.id` in `project.json`**.
+- A `video` value's `poster` is an ordinary entry under `images/`, not under
+  `video/` — it's a still, and every view that features it treats it as any
+  other image.
 - For attachments specifically, the name in `attachments/` is the generated
   (UUID-based) file name — the same one in the url — not the original file name
   a user picked. That original name lives on the record's `attachment` value
@@ -353,10 +361,11 @@ Given an archive, the app:
 
 1. Generates a **new project id**, so importing the same file twice yields two
    independent projects instead of overwriting the first.
-2. Rewrites every `app-image:///<oldId>/`, `app-audio:///<oldId>/` and
-   `app-attachment:///<oldId>/` prefix in the project to the new id. External
-   `http(s)` urls are left alone.
-3. Writes each asset to `<dataDir>/projects/<newId>/images|audio|attachments/<name>`.
+2. Rewrites every `app-image:///<oldId>/`, `app-audio:///<oldId>/`,
+   `app-video:///<oldId>/` and `app-attachment:///<oldId>/` prefix in the
+   project to the new id. External `http(s)` urls are left alone.
+3. Writes each asset to
+   `<dataDir>/projects/<newId>/images|audio|video|attachments/<name>`.
 4. Sets `updatedAt` to now, keeps `createdAt`.
 
 `project.json` is read on its own pass before any of that, since entry order in
@@ -510,7 +519,7 @@ watcher picks up outside writes live.
 - `format` is `"crow-project"` and `version` is `3` (or `1`/`2` for the older
   single-document form, in which case the file is JSON rather than an archive).
 - If it's an archive: `project.json` is at the root, and every other entry sits
-  under `images/`, `audio/` or `attachments/`.
+  under `images/`, `audio/`, `video/` or `attachments/`.
 - `project.id` matches `^[a-zA-Z0-9-]+$` and matches every `app-*:///<id>/` url.
 - Every `values` key is a field **id** that exists in `fields`.
 - Every `select`/`multiSelect` value is a choice **id**, not a name; multiSelect
@@ -520,6 +529,9 @@ watcher picks up outside writes live.
   the field isn't `multiple`.
 - Every `attachment` value is an array of `{ url, name }` objects (even for one
   file), and each `url`'s asset `kind` is `attachment`, not `image`/`audio`.
+- Every `video` value is a single `{ url }` object — not a bare url string —
+  whose file sits under `video/`, and whose `poster`, if it has one, sits under
+  `images/`.
 - Dates are `"YYYY-MM-DD"` for all-day values or `"YYYY-MM-DDTHH:mm"` for local timed values; numbers are JSON numbers, checkboxes are booleans.
 - Each view config includes `hiddenFieldIds`, and `groupByFieldId` /
   `coverFieldId` / `dateFieldId` name fields that exist and are of the right

@@ -10,7 +10,8 @@ import {
   nextChoiceColor,
   RATING_MAX,
   recordLabel,
-  relationTable
+  relationTable,
+  videoFrom
 } from './fields'
 
 /**
@@ -51,6 +52,10 @@ export function cellToText(field: Field, value: unknown, tables: Table[] = []): 
       return attachmentsFrom(value)
         .map((a) => a.name)
         .join(LIST_SEPARATOR)
+    // The url, not the file name: it's the part a paste can put back, and the
+    // cover frame is recaptured from it rather than carried as text.
+    case 'video':
+      return videoFrom(value)?.url ?? ''
     // Nothing can paste or import a created/modified stamp back in, so there's
     // no raw form worth preserving — export the text the column shows.
     case 'createdTime':
@@ -221,6 +226,11 @@ export function parseCellText(field: Field, raw: string, ctx: ParseContext): Par
     case 'audio':
       // Only a url means anything here; free text would just break the cell.
       return /^(https?|app-image|app-audio):/i.test(text) ? { value: text } : null
+    case 'video':
+      // Same as above, but a video cell holds an object. The pasted cell gets
+      // no cover — capturing one needs a decoder, which a paste has no place
+      // waiting on; the editor's Capture cover button fills it in.
+      return /^(https?|app-video):/i.test(text) ? { value: { url: text } } : null
     case 'attachment':
       // Files come from the picker or a drop, which carry real bytes; typed
       // text can't produce that, so pasting into this column is a no-op.

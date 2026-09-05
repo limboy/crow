@@ -48,10 +48,13 @@ import { SortPopover } from '@/components/toolbar/SortPopover'
 import { applyFilters, applySorts } from '@/lib/derive'
 import {
   cellValue,
+  coverImageUrl,
   dateFormatInfo,
   displayValue,
   fieldDateParts,
+  fieldTypeInfo,
   isComputedField,
+  isCoverField,
   isEmptyValue
 } from '@/lib/fields'
 import { imageAspectRatioInfo } from '@/lib/imageAspect'
@@ -115,7 +118,7 @@ export function CalendarView({
   const canAddOnDay = dateSource?.type === 'date'
   const mode = config.mode ?? 'month'
   const showHours = config.showHours ?? true
-  const imageFields = table.fields.filter((field) => field.type === 'image')
+  const imageFields = table.fields.filter(isCoverField)
   const imageField = imageFields.find((field) => field.id === config.imageFieldId)
   const cardFields = table.fields.filter(
     (field) =>
@@ -922,8 +925,10 @@ function CalendarEventButton({
   const detailFields = cardFields?.filter(
     (field) => field.id !== titleField?.id && !isEmptyValue(field, cellValue(field, record))
   )
-  const imageValue = imageField ? record.values[imageField.id] : undefined
-  const hasImage = imageField !== undefined && !isEmptyValue(imageField, imageValue)
+  // A video field features the still captured from it, so this is an image
+  // url either way — or nothing, for a video with no cover captured yet.
+  const imageUrl = imageField ? coverImageUrl(imageField, record.values[imageField.id]) : undefined
+  const ImagePlaceholderIcon = imageField ? fieldTypeInfo(imageField.type).icon : ImageIcon
 
   if (cardFields) {
     return (
@@ -946,10 +951,10 @@ function CalendarEventButton({
               imageAspectRatioInfo(aspectRatio).className
             )}
           >
-            {hasImage ? (
-              <img src={String(imageValue)} alt="" className="h-full w-full object-cover" />
+            {imageUrl ? (
+              <img src={imageUrl} alt="" className="h-full w-full object-cover" />
             ) : (
-              <ImageIcon className="size-5 text-muted-foreground/40" />
+              <ImagePlaceholderIcon className="size-5 text-muted-foreground/40" />
             )}
           </div>
         )}

@@ -20,7 +20,7 @@ export async function saveMediaAs(
   win: BrowserWindow | null,
   url: string,
   localPath: string | null,
-  kind: 'image' | 'audio'
+  kind: 'image' | 'audio' | 'video'
 ): Promise<boolean> {
   let parsed: URL
   try {

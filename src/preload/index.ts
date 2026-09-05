@@ -17,16 +17,21 @@ const api: Api = {
   importCsv: () => ipcRenderer.invoke('csv:import'),
   pickImage: (projectId: string) => ipcRenderer.invoke('images:pick', projectId),
   pickAudio: (projectId: string) => ipcRenderer.invoke('audio:pick', projectId),
+  pickVideo: (projectId: string) => ipcRenderer.invoke('video:pick', projectId),
   saveImageAs: (url: string) => ipcRenderer.invoke('images:saveAs', url),
   saveAudioAs: (url: string) => ipcRenderer.invoke('audio:saveAs', url),
+  saveVideoAs: (url: string) => ipcRenderer.invoke('video:saveAs', url),
   pickAttachments: (projectId: string) => ipcRenderer.invoke('attachments:pick', projectId),
   importImageData: (projectId: string, name: string, data: ArrayBuffer) =>
     ipcRenderer.invoke('images:importData', projectId, name, data),
   importAudioData: (projectId: string, name: string, data: ArrayBuffer) =>
     ipcRenderer.invoke('audio:importData', projectId, name, data),
+  importVideoData: (projectId: string, name: string, data: ArrayBuffer) =>
+    ipcRenderer.invoke('video:importData', projectId, name, data),
   importAttachmentData: (projectId: string, name: string, data: ArrayBuffer) =>
     ipcRenderer.invoke('attachments:importData', projectId, name, data),
   openAttachment: (url: string) => ipcRenderer.invoke('attachments:open', url),
+  openVideo: (url: string) => ipcRenderer.invoke('video:open', url),
   saveAttachmentAs: (url: string, name: string) =>
     ipcRenderer.invoke('attachments:saveAs', url, name),
   onProjectsChanged: (callback: () => void) => {

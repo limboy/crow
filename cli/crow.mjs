@@ -3,8 +3,8 @@
  * crow CLI — lets scripts and AI agents read and write Crow projects.
  *
  * It operates directly on the same JSON files the desktop app uses
- * (userData/projects/<project-id>/data.json, with that project's images/audio
- * alongside it). The app watches the projects directory, so changes made here
+ * (userData/projects/<project-id>/data.json, with that project's
+ * images/audio/video alongside it). The app watches the projects directory, so changes made here
  * show up live in an open window. All output is JSON on stdout; errors are
  * JSON on stderr with a non-zero exit code. Run `crow help` for the full
  * command reference.
@@ -16,7 +16,7 @@ import { randomUUID } from 'crypto'
 
 const SAFE_ID = /^[a-zA-Z0-9-]+$/
 
-const FIELD_TYPES = ['text', 'number', 'select', 'multiSelect', 'date', 'checkbox', 'url', 'image', 'audio', 'relation', 'rating', 'attachment', 'createdTime', 'lastModifiedTime']
+const FIELD_TYPES = ['text', 'number', 'select', 'multiSelect', 'date', 'checkbox', 'url', 'image', 'audio', 'video', 'relation', 'rating', 'attachment', 'createdTime', 'lastModifiedTime']
 
 /** Field types the app fills in from the record's own timestamps. They have no
  *  stored value, so nothing may write to them. */
@@ -83,6 +83,7 @@ const projectDir = (id) => join(projectsRootDir(), id)
 const projectFile = (id) => join(projectDir(id), 'data.json')
 const imagesDir = (id) => join(projectDir(id), 'images')
 const audioDir = (id) => join(projectDir(id), 'audio')
+const videoDir = (id) => join(projectDir(id), 'video')
 const attachmentsDir = (id) => join(projectDir(id), 'attachments')
 
 // ---------------------------------------------------------------------------
@@ -235,6 +236,8 @@ function recordLabel(table, record) {
     return names.length > 0 ? names.join(', ') : 'Untitled'
   }
   if (primary.type === 'relation') return 'Untitled'
+  // Both store an object, which has no useful text form.
+  if (primary.type === 'video' || primary.type === 'attachment') return 'Untitled'
   if (primary.type === 'checkbox') return raw === true ? 'Checked' : 'Untitled'
   return String(raw)
 }
@@ -368,6 +371,26 @@ async function coerceValue(field, value, project) {
       const name = `${uuid()}${extname(str).toLowerCase() || '.mp3'}`
       await fs.copyFile(str, join(audioDir(projectId), name))
       return `app-audio:///${projectId}/${name}`
+    }
+    case 'video': {
+      // Already a stored value — read back from another record, say — is kept
+      // whole, cover frame and all: capturing one needs a video decoder, so
+      // the app is the only thing that can produce it.
+      if (value && typeof value === 'object' && typeof value.url === 'string') {
+        const kept = { url: value.url }
+        if (typeof value.name === 'string') kept.name = value.name
+        if (typeof value.poster === 'string') kept.poster = value.poster
+        return kept
+      }
+      const str = String(value)
+      if (str.startsWith('app-video://')) return { url: str }
+      if (!existsSync(str)) {
+        fail(`Field "${field.name}" expects a local video file path, app-video:// URL, or {url,name} object, got ${JSON.stringify(value)}`)
+      }
+      await fs.mkdir(videoDir(projectId), { recursive: true })
+      const name = `${uuid()}${extname(str).toLowerCase() || '.mp4'}`
+      await fs.copyFile(str, join(videoDir(projectId), name))
+      return { url: `app-video:///${projectId}/${name}`, name: basename(str) }
     }
     case 'attachment': {
       const items = Array.isArray(value) ? value : [value]
@@ -835,6 +858,12 @@ VALUE FORMATS (per field type, when writing)
                 or an existing app-image:/// URL
   audio         path to a local audio file (copied into the app's storage),
                 or an existing app-audio:/// URL
+  video         path to a local video file (copied into the app's storage), or an
+                existing app-video:/// URL. Read back as {url,name,poster}. The cover
+                frame is captured a quarter of the way in by the app, which owns the
+                only decoder — a video added here shows a placeholder until the app's
+                Capture cover button fills it in. Pass the {url,name,poster} object
+                back to move an existing video between records without losing it.
   createdTime, lastModifiedTime
                 read-only — the app keeps them from the record itself, and writing to
                 one is an error. Read back as an ISO instant. --date-format picks how

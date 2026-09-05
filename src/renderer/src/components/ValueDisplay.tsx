@@ -1,4 +1,4 @@
-import { Check, Paperclip } from 'lucide-react'
+import { Check, Paperclip, Play, Video } from 'lucide-react'
 import type { Field } from '@shared/types'
 import {
   attachmentsFrom,
@@ -8,7 +8,9 @@ import {
   isEmptyValue,
   linkedRecords,
   recordLabel,
-  relationTable
+  relationTable,
+  videoFrom,
+  videoLabel
 } from '@/lib/fields'
 import { useProjectTables } from '@/lib/relations'
 import { cn } from '@/lib/utils'
@@ -112,6 +114,55 @@ export function ValueDisplay({
             className
           )}
         />
+      )
+    }
+    case 'video': {
+      const video = videoFrom(value)
+      if (!video) return null
+      // The poster is the only part rendered inline; clicking hands the video
+      // itself to the OS player, the way an attachment is opened.
+      const posterMaxHeightClass =
+        { 2: 'max-h-12', 4: 'max-h-24', 9: 'max-h-48' }[lineClamp] ?? 'max-h-32'
+      return (
+        <button
+          type="button"
+          title={`Play ${videoLabel(video)}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            void window.api.openVideo(video.url)
+          }}
+          className={cn('relative inline-flex max-w-full items-center', className)}
+        >
+          {video.poster ? (
+            <>
+              <img
+                src={video.poster}
+                alt=""
+                className={cn(
+                  'rounded-sm border',
+                  lineClamp > 1
+                    ? cn(posterMaxHeightClass, 'max-w-full object-contain')
+                    : 'h-6 w-10 object-cover'
+                )}
+              />
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span
+                  className={cn(
+                    'flex items-center justify-center rounded-full bg-black/55 text-white',
+                    lineClamp > 1 ? 'size-7' : 'size-4'
+                  )}
+                >
+                  <Play className={cn('fill-current', lineClamp > 1 ? 'size-3' : 'size-2')} />
+                </span>
+              </span>
+            </>
+          ) : (
+            <span className="inline-flex max-w-full items-center gap-1 truncate rounded-md bg-neutral-100 px-1.5 py-0.5 text-xs font-medium text-neutral-700 hover:underline dark:bg-neutral-800 dark:text-neutral-300">
+              <Video className="size-3 shrink-0" />
+              <span className="truncate">{videoLabel(video)}</span>
+            </span>
+          )}
+        </button>
       )
     }
     case 'audio':

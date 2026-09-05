@@ -35,7 +35,14 @@ import {
   UNCATEGORIZED,
   type RecordGroup
 } from '@/lib/derive'
-import { cellValue, displayValue, isEmptyValue } from '@/lib/fields'
+import {
+  cellValue,
+  coverImageUrl,
+  displayValue,
+  fieldTypeInfo,
+  isCoverField,
+  isEmptyValue
+} from '@/lib/fields'
 import { imageAspectRatioInfo } from '@/lib/imageAspect'
 import * as ops from '@/lib/ops'
 import { useProjectTables } from '@/lib/relations'
@@ -61,7 +68,7 @@ export function KanbanView({
   const tables = useProjectTables()
   const selectFields = table.fields.filter((f) => f.type === 'select')
   const groupField = selectFields.find((f) => f.id === config.groupByFieldId)
-  const imageFields = table.fields.filter((f) => f.type === 'image')
+  const imageFields = table.fields.filter(isCoverField)
   const imageField = imageFields.find((f) => f.id === config.imageFieldId)
   const [activeRecordId, setActiveRecordId] = useState<string | null>(null)
   const [addFieldOpen, setAddFieldOpen] = useState(false)
@@ -404,8 +411,10 @@ function KanbanCard({
   const detailFields = cardFields.filter(
     (f) => f.id !== titleField?.id && !isEmptyValue(f, cellValue(f, record))
   )
-  const imageValue = imageField ? record.values[imageField.id] : undefined
-  const hasImage = imageField !== undefined && !isEmptyValue(imageField, imageValue)
+  // A video field features the still captured from it, so this is an image
+  // url either way — or nothing, for a video with no cover captured yet.
+  const imageUrl = imageField ? coverImageUrl(imageField, record.values[imageField.id]) : undefined
+  const ImagePlaceholderIcon = imageField ? fieldTypeInfo(imageField.type).icon : ImageIcon
   const findStates = find
     ? [...(titleField ? [titleField] : []), ...detailFields].map((field) =>
         getFindCellState(find, record.id, field.id)
@@ -434,10 +443,10 @@ function KanbanCard({
             imageAspectRatioInfo(aspectRatio).className
           )}
         >
-          {hasImage ? (
-            <img src={String(imageValue)} alt="" className="h-full w-full object-cover" />
+          {imageUrl ? (
+            <img src={imageUrl} alt="" className="h-full w-full object-cover" />
           ) : (
-            <ImageIcon className="size-5 text-muted-foreground/40" />
+            <ImagePlaceholderIcon className="size-5 text-muted-foreground/40" />
           )}
         </div>
       )}
