@@ -131,7 +131,7 @@ export function GalleryView({
           ))}
           <button
             className={cn(
-              'flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed text-sm text-muted-foreground transition-colors hover:border-ring hover:text-foreground',
+              'flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed text-sm text-muted-foreground transition-colors hover:border-muted-foreground hover:text-foreground',
               // Left to stretch to the cards beside it, so it ends where they
               // do however tall their covers make them. With no cards to take
               // its height from it needs a tile-sized minimum of its own.
