@@ -172,7 +172,12 @@ export function ChartFigure({
         />
       )}
       {drillDown}
-      <ChartFootnote folded={data.folded} trimmed={data.trimmed} shown={data.buckets.length} />
+      <ChartFootnote
+        folded={data.folded}
+        trimmed={data.trimmed}
+        shown={data.buckets.length}
+        dateGrain={spec.dateGrain ?? 'month'}
+      />
     </div>
   )
 }
@@ -189,18 +194,20 @@ function ChartNote({ children }: { children: React.ReactNode }): React.JSX.Eleme
 function ChartFootnote({
   folded,
   trimmed,
-  shown
+  shown,
+  dateGrain
 }: {
   folded: number
   trimmed: number
   shown: number
+  dateGrain: NonNullable<ChartSpec['dateGrain']>
 }): React.JSX.Element | null {
   if (folded === 0 && trimmed === 0) return null
   return (
     <p className="text-[11px] text-muted-foreground">
       {folded > 0
         ? `${folded} smaller ${folded === 1 ? 'category' : 'categories'} folded into Other.`
-        : `Showing the ${shown} most recent of ${shown + trimmed} periods.`}
+        : `Showing the latest ${shown} of ${shown + trimmed} ${dateGrain}s.`}
     </p>
   )
 }
