@@ -525,6 +525,13 @@ function deleteFieldEverywhere(table, fieldId) {
     if (config.sorts) config.sorts = config.sorts.filter((s) => s.fieldId !== fieldId)
     if (config.groupByFieldId === fieldId) config.groupByFieldId = undefined
     if (config.coverFieldId === fieldId) config.coverFieldId = undefined
+    if (config.dateFieldId === fieldId) config.dateFieldId = undefined
+    // A dashboard chart that read the field keeps its place and falls back to
+    // the app's "pick a field" prompt.
+    for (const chart of config.charts ?? []) {
+      if (chart.groupByFieldId === fieldId) chart.groupByFieldId = undefined
+      if (chart.valueFieldId === fieldId) chart.valueFieldId = undefined
+    }
   }
 }
 

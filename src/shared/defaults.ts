@@ -16,7 +16,15 @@ export function newRecord(values: Record<string, unknown> = {}): RecordRow {
 export function newView(type: View['type'], name?: string): View {
   const base = {
     id: uuid(),
-    name: name ?? { table: 'Table', kanban: 'Kanban', gallery: 'Gallery', calendar: 'Calendar' }[type]
+    name:
+      name ??
+      {
+        table: 'Table',
+        kanban: 'Kanban',
+        gallery: 'Gallery',
+        calendar: 'Calendar',
+        dashboard: 'Dashboard'
+      }[type]
   }
   switch (type) {
     case 'table':
@@ -55,6 +63,12 @@ export function newView(type: View['type'], name?: string): View {
           mode: 'month',
           showHours: true
         }
+      }
+    case 'dashboard':
+      return {
+        ...base,
+        type,
+        config: { hiddenFieldIds: [], filters: [], filterMatch: 'all', sorts: [], charts: [] }
       }
   }
 }

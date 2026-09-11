@@ -105,7 +105,7 @@ as empty. Get it right in the generator.
 | `name` | yes | The tab label. |
 | `fields` | yes | Column definitions. |
 | `records` | yes | Rows. |
-| `views` | yes | Saved table/kanban/gallery/calendar configurations. |
+| `views` | yes | Saved table/kanban/gallery/calendar/dashboard configurations. |
 
 **Tables reference each other in exactly one place: `relation` fields.** Field,
 record, choice and view ids only have to be unique *within* their own table;
@@ -300,6 +300,31 @@ it. A table with no views opens on an empty state, so include at least one. Each
     "name": "Calendar",
     "type": "calendar",
     "config": { "dateFieldId": "fld-due", "hiddenFieldIds": [], "mode": "month", "showHours": true }
+  },
+  {
+    "id": "vw-dash",
+    "name": "Dashboard",
+    "type": "dashboard",
+    "config": {
+      "hiddenFieldIds": [],
+      "charts": [
+        {
+          "id": "cht-status",
+          "name": "",
+          "type": "column",
+          "groupByFieldId": "fld-status",
+          "aggregate": "count",
+          "limit": 8
+        },
+        {
+          "id": "cht-pages",
+          "name": "Pages read",
+          "type": "metric",
+          "aggregate": "sum",
+          "valueFieldId": "fld-pages"
+        }
+      ]
+    }
   }
 ]
 ```
@@ -317,6 +342,30 @@ it. A table with no views opens on an empty state, so include at least one. Each
 | `dateFieldId` | calendar | A `date`, `createdTime` or `lastModifiedTime` field id; unset falls back to the table's first such field. Only a `date` field can be written to, so that's the only kind where clicking an empty day creates a record on it. The old `"__createdAt__"` sentinel is gone — a file still carrying it loads as unset, and a `createdTime` field replaces it. |
 | `mode` | calendar | `month` (default), `week`, or `day`. |
 | `showHours` | calendar | In Week and Day modes, `true` (default) uses an hourly agenda: date-only records appear in its all-day row and timed records are placed at their local start time. `false` uses a compact list inside each day. |
+| `charts` | dashboard | The charts the view composes, in the order they're laid out. Required (use `[]`, which opens on an empty state). See below. |
+
+A dashboard's `hiddenFieldIds` is carried for uniformity and ignored — the view
+shows aggregates rather than fields. Its `filters`/`filterMatch` do apply, and
+scope every chart on it, so the numbers on one card always agree with the next.
+
+### `charts`
+
+Each chart is one object. Only `id`, `type` and `aggregate` are required;
+anything malformed is dropped on load rather than refusing the view, and
+anything merely unset renders a "pick a field" prompt on the card.
+
+| Key | Required | Notes |
+| --- | --- | --- |
+| `id` | yes | Opaque string, unique within the view. |
+| `name` | no | The card's title. Empty (or absent) titles it from what it measures, e.g. `Records by Status`. |
+| `type` | yes | `metric` (one headline figure), `bar` (horizontal), `column` (vertical), `line` (a trend over a date field), or `donut` (part-to-whole). |
+| `aggregate` | yes | `count`, `sum`, `average`, `median`, `min` or `max`. |
+| `valueFieldId` | for non-`count` | A `number` or `rating` field id. Ignored by `count`. |
+| `groupByFieldId` | for non-`metric` | The field whose values become the chart's categories. Any field type but `image`/`audio`/`video`/`attachment`. A `multiSelect` or `relation` field buckets a record once per value it holds, so the buckets can count more records between them than the view shows. |
+| `dateGrain` | no | Only when `groupByFieldId` is a `date`, `createdTime` or `lastModifiedTime` field: `day`, `week` (starting Monday), `month` (the default) or `year`. Periods with no records are still plotted — the gap is real. |
+| `sort` | no | `category` (the field's own order), `valueDesc` or `valueAsc`. Unset sorts a date grouping chronologically and everything else by value, largest first. |
+| `limit` | no | Most buckets to plot; unset is 8, and a donut is capped at 6 whatever this says. A categorical grouping folds its smallest categories into one trailing `Other`; a date grouping keeps the most recent periods instead. Either way the card says what it left out. |
+| `size` | no | `half` (default) or `full` width in the dashboard grid. |
 
 ## Assets
 
@@ -535,5 +584,7 @@ watcher picks up outside writes live.
 - Dates are `"YYYY-MM-DD"` for all-day values or `"YYYY-MM-DDTHH:mm"` for local timed values; numbers are JSON numbers, checkboxes are booleans.
 - Each view config includes `hiddenFieldIds`, and `groupByFieldId` /
   `coverFieldId` / `dateFieldId` name fields that exist and are of the right
-  type.
+  type. A dashboard's `charts` is present (`[]` at minimum), and each chart's
+  `groupByFieldId` / `valueFieldId` names a field that exists — a `number` or
+  `rating` one for `valueFieldId`.
 - Asset `name`s are bare file names with the right extension.

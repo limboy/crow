@@ -24,6 +24,19 @@
   --input: oklch(0.922 0 0);
   /*--ring: oklch(0.708 0 0);*/
   --ring: oklch(0.5573 0.1921 257.95);
+  /* Categorical chart slots, assigned in this fixed order and never cycled.
+     Validated as a set against the card surface for colour-vision deficiency
+     separation and lightness/chroma banding; re-validate before changing one. */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
+  --chart-7: #4a3aa7;
+  --chart-8: #e34948;
+  /* The folded tail of a chart with more categories than slots. */
+  --chart-other: #a3a3a3;
   --find-highlight: #ffa405;
   --find-match: #ffde02;
   --find-match-background: #fff4d4;
@@ -53,6 +66,17 @@
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
+  /* The same eight hues re-stepped for the dark card surface — a selected
+     palette, not an automatic flip of the light one. */
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+  --chart-7: #9085e9;
+  --chart-8: #e66767;
+  --chart-other: #6b6b6b;
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(1 0 0 / 10%);
@@ -88,6 +112,15 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+  --color-chart-other: var(--chart-other);
   --color-find-highlight: var(--find-highlight);
   --color-find-match: var(--find-match);
   --color-find-match-background: var(--find-match-background);

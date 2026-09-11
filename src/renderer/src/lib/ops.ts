@@ -1,5 +1,6 @@
 import { newRecord, newTable, newView } from '@shared/defaults'
 import {
+  type ChartSpec,
   type Field,
   type Project,
   type RecordRow,
@@ -395,8 +396,76 @@ export function addView(table: Table, type: ViewType): Table {
   if (view.type === 'calendar') {
     view.config.dateFieldId = table.fields.find((field) => field.type === 'date')?.id
   }
+  // A dashboard with nothing on it says nothing, so it opens on one chart the
+  // table can already answer.
+  if (view.type === 'dashboard') view.config.charts = [defaultChart(table)]
   if (count > 0) view.name = `${view.name} ${count + 1}`
   return { ...table, views: [...table.views, view] }
+}
+
+// --- Dashboard charts -------------------------------------------------------
+
+/** The chart a new dashboard (or a new tile) starts from: records counted by
+ *  the first select field, or a plain record count when there's none to group
+ *  by — either way something that draws straight away. */
+export function defaultChart(table: Table): ChartSpec {
+  const groupField = table.fields.find((field) => field.type === 'select')
+  return {
+    id: crypto.randomUUID(),
+    name: '',
+    type: groupField ? 'column' : 'metric',
+    groupByFieldId: groupField?.id,
+    aggregate: 'count'
+  }
+}
+
+/** Charts live in a dashboard's view config, so every edit to one is a patch of
+ *  that view; other view types pass through untouched. */
+function patchCharts(
+  table: Table,
+  viewId: string,
+  fn: (charts: ChartSpec[]) => ChartSpec[]
+): Table {
+  return patchView(table, viewId, (view) =>
+    view.type === 'dashboard'
+      ? { ...view, config: { ...view.config, charts: fn(view.config.charts) } }
+      : view
+  )
+}
+
+export function addChart(table: Table, viewId: string, chart: ChartSpec): Table {
+  return patchCharts(table, viewId, (charts) => [...charts, chart])
+}
+
+export function updateChart(table: Table, viewId: string, chart: ChartSpec): Table {
+  return patchCharts(table, viewId, (charts) =>
+    charts.map((candidate) => (candidate.id === chart.id ? chart : candidate))
+  )
+}
+
+export function deleteChart(table: Table, viewId: string, chartId: string): Table {
+  return patchCharts(table, viewId, (charts) => charts.filter((chart) => chart.id !== chartId))
+}
+
+export function duplicateChart(table: Table, viewId: string, chartId: string): Table {
+  return patchCharts(table, viewId, (charts) => {
+    const index = charts.findIndex((chart) => chart.id === chartId)
+    if (index === -1) return charts
+    const copy = { ...charts[index], id: crypto.randomUUID() }
+    return [...charts.slice(0, index + 1), copy, ...charts.slice(index + 1)]
+  })
+}
+
+/** Moves a chart one place along the grid; a move off either end is a no-op. */
+export function moveChart(table: Table, viewId: string, chartId: string, offset: number): Table {
+  return patchCharts(table, viewId, (charts) => {
+    const index = charts.findIndex((chart) => chart.id === chartId)
+    const target = index + offset
+    if (index === -1 || target < 0 || target >= charts.length) return charts
+    const next = [...charts]
+    next.splice(target, 0, ...next.splice(index, 1))
+    return next
+  })
 }
 
 export function renameView(table: Table, viewId: string, name: string): Table {
@@ -537,6 +606,21 @@ export function deleteField(table: Table, fieldId: string): Table {
             ...view.config,
             ...shared,
             dateFieldId: view.config.dateFieldId === fieldId ? undefined : view.config.dateFieldId
+          }
+        }
+      // A chart that was reading the deleted field keeps its place and falls
+      // back to its "pick a field" prompt, rather than vanishing with it.
+      case 'dashboard':
+        return {
+          ...view,
+          config: {
+            ...view.config,
+            ...shared,
+            charts: view.config.charts.map((chart) => ({
+              ...chart,
+              groupByFieldId: chart.groupByFieldId === fieldId ? undefined : chart.groupByFieldId,
+              valueFieldId: chart.valueFieldId === fieldId ? undefined : chart.valueFieldId
+            }))
           }
         }
     }

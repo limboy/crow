@@ -1,5 +1,6 @@
 import {
   CalendarDays,
+  ChartColumn,
   FolderKanban,
   GalleryVertical,
   SquareKanban,
@@ -22,7 +23,8 @@ const VIEW_ICONS: Record<ViewType, LucideIcon> = {
   table: Table2,
   kanban: SquareKanban,
   gallery: GalleryVertical,
-  calendar: CalendarDays
+  calendar: CalendarDays,
+  dashboard: ChartColumn
 }
 
 export function ProjectCommandPalette({

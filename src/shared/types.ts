@@ -112,7 +112,7 @@ export interface RecordRow {
   values: Record<string, unknown>
 }
 
-export type ViewType = 'table' | 'kanban' | 'gallery' | 'calendar'
+export type ViewType = 'table' | 'kanban' | 'gallery' | 'calendar' | 'dashboard'
 
 export type FilterOperator =
   | 'contains'
@@ -215,11 +215,64 @@ export interface CalendarViewConfig extends ViewRules {
   imageAspectRatio?: ImageAspectRatio
 }
 
+/** What a chart plots: how a bucket of records becomes one number. `count`
+ *  reads no field at all; the rest read a `number`/`rating` field. */
+export type ChartAggregate = 'count' | 'sum' | 'average' | 'median' | 'min' | 'max'
+
+/** `metric` is a single headline number over every record and takes no
+ *  grouping field; the other four bucket records by one field and plot the
+ *  aggregate per bucket. */
+export type ChartType = 'metric' | 'bar' | 'column' | 'line' | 'donut'
+
+/** Calendar bucket a date grouping field falls into. */
+export type ChartDateGrain = 'day' | 'week' | 'month' | 'year'
+
+/** Bucket order along the axis. `category` is the grouping field's own order —
+ *  choice order for a select field, chronological for a date. */
+export type ChartSort = 'category' | 'valueDesc' | 'valueAsc'
+
+/** How wide a chart sits in the dashboard grid; unset is `half`. */
+export type ChartSize = 'half' | 'full'
+
+/** One chart on a dashboard. Everything but `id`/`type`/`aggregate` is
+ *  optional, so a half-configured chart renders a prompt rather than breaking
+ *  the view. */
+export interface ChartSpec {
+  id: string
+  name: string
+  type: ChartType
+  /** Field whose values bucket the records into categories. A `metric` has
+   *  none — it aggregates every record the view shows into one number. */
+  groupByFieldId?: string
+  /** Only when `groupByFieldId` names a date/timestamp field: the calendar
+   *  bucket its values fall into; unset buckets by month. */
+  dateGrain?: ChartDateGrain
+  aggregate: ChartAggregate
+  /** The `number`/`rating` field the aggregate reads. Ignored by `count`. */
+  valueFieldId?: string
+  /** Unset picks per chart type: chronological groupings keep their own
+   *  order, everything else sorts by value, largest first. */
+  sort?: ChartSort
+  /** Most buckets to plot; unset shows 8. A categorical grouping folds its
+   *  tail into one "Other" bucket, a chronological one keeps the most recent. */
+  limit?: number
+  size?: ChartSize
+}
+
+export interface DashboardViewConfig extends ViewRules {
+  /** Carried by every view config, and unused here — a dashboard shows
+   *  aggregates rather than fields. Kept so the shared machinery (CSV export,
+   *  field deletion) can treat every view the same way. */
+  hiddenFieldIds: string[]
+  charts: ChartSpec[]
+}
+
 export type View =
   | { id: string; name: string; type: 'table'; config: TableViewConfig }
   | { id: string; name: string; type: 'kanban'; config: KanbanViewConfig }
   | { id: string; name: string; type: 'gallery'; config: GalleryViewConfig }
   | { id: string; name: string; type: 'calendar'; config: CalendarViewConfig }
+  | { id: string; name: string; type: 'dashboard'; config: DashboardViewConfig }
 
 /** One table inside a project: its own schema, rows, and saved views.
  *  Tables are independent — a field id only means something within its own

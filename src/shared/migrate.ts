@@ -1,5 +1,9 @@
 import type {
   CalendarViewConfig,
+  ChartAggregate,
+  ChartSpec,
+  ChartType,
+  DashboardViewConfig,
   LegacyProject,
   Project,
   Table,
@@ -207,6 +211,33 @@ function normalizeAudioPlayback(value: unknown): TableViewConfig['audioPlayback'
   return Object.keys(normalized).length > 0 ? normalized : undefined
 }
 
+const CHART_TYPES: ChartType[] = ['metric', 'bar', 'column', 'line', 'donut']
+const CHART_AGGREGATES: ChartAggregate[] = ['count', 'sum', 'average', 'median', 'min', 'max']
+
+/** A dashboard's charts, with anything malformed dropped rather than left to
+ *  throw at render time — a chart is small enough that losing one broken tile
+ *  beats refusing to open the view. Everything optional is left alone; the
+ *  renderer already treats an unset field as "not configured yet". */
+function normalizeCharts(value: unknown): ChartSpec[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
+    const chart = raw as Partial<ChartSpec>
+    if (!CHART_TYPES.includes(chart.type as ChartType)) return []
+    return [
+      {
+        ...chart,
+        id: typeof chart.id === 'string' && chart.id !== '' ? chart.id : crypto.randomUUID(),
+        name: typeof chart.name === 'string' ? chart.name : '',
+        type: chart.type as ChartType,
+        aggregate: CHART_AGGREGATES.includes(chart.aggregate as ChartAggregate)
+          ? (chart.aggregate as ChartAggregate)
+          : 'count'
+      }
+    ]
+  })
+}
+
 /** View rules evolved after plenty of projects had already been written to
  *  disk, so fill in the filter defaults the rest of the app expects. */
 function normalizeView(view: View): View {
@@ -221,6 +252,9 @@ function normalizeView(view: View): View {
       sorts: Array.isArray(config.sorts) ? config.sorts : [],
       ...(view.type === 'table'
         ? { audioPlayback: normalizeAudioPlayback(config.audioPlayback) }
+        : {}),
+      ...(view.type === 'dashboard'
+        ? { charts: normalizeCharts((config as Partial<DashboardViewConfig>).charts) }
         : {}),
       ...(view.type === 'calendar' &&
       (config as Partial<CalendarViewConfig>).dateFieldId === LEGACY_CREATED_AT_DATE_SOURCE

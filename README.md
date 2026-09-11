@@ -7,6 +7,7 @@ A lite Airtable-style desktop app built with Electron. Create multiple projects,
 - **Table view** — show/hide fields, filter rules, multi-sort, group by field, inline cell editing
 - **Kanban view** — group by any single-select field, drag cards between columns
 - **Gallery view** — pick any image field as the card cover
+- **Dashboard view** — compose charts from the table's own records: counts, sums and averages as numbers, bars, columns, lines or donuts
 - **Field types** — text, number, single select, multi select, date, checkbox, URL, rating (1–5 stars), image (local file or URL), audio, attachment (any files, opened with the OS default app), link to records
 - **Linked records** — a `relation` field points a table's rows at rows in another table of the same project (Articles → Comments), single or multiple links per cell
 - **Multiple tables** — switch between a project's tables from the header; each keeps its own schema and views

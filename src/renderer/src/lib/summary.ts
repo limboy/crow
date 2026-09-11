@@ -66,7 +66,9 @@ function formatPercent(part: number, total: number): string {
   return `${((part / total) * 100).toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
 }
 
-function numberValues(field: Field, records: RecordRow[]): number[] {
+/** Every usable number in a column — the basis of both the footer's
+ *  arithmetic summaries and a dashboard chart's aggregates. */
+export function numberValues(field: Field, records: RecordRow[]): number[] {
   return records
     .map((r) => cellValue(field, r))
     .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))

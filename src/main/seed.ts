@@ -112,6 +112,23 @@ export async function seedIfEmpty(): Promise<void> {
   if (kanban.type === 'kanban') kanban.config.groupByFieldId = status.id
   const gallery = newView('gallery')
   if (gallery.type === 'gallery') gallery.config.coverFieldId = cover.id
+  const dashboard = newView('dashboard')
+  if (dashboard.type === 'dashboard') {
+    dashboard.config.charts = [
+      { id: uuid(), name: '', type: 'column', groupByFieldId: status.id, aggregate: 'count' },
+      { id: uuid(), name: '', type: 'donut', groupByFieldId: priority.id, aggregate: 'count' },
+      { id: uuid(), name: 'Work by tag', type: 'bar', groupByFieldId: tags.id, aggregate: 'count' },
+      {
+        id: uuid(),
+        name: 'Work due each month',
+        type: 'line',
+        groupByFieldId: due.id,
+        aggregate: 'count',
+        dateGrain: 'month',
+        size: 'full'
+      }
+    ]
+  }
 
   const project: Project = {
     id: uuid(),
@@ -124,7 +141,7 @@ export async function seedIfEmpty(): Promise<void> {
         name: 'Roadmap',
         fields: [name, status, priority, tags, due, approved, spec, cover],
         records: rows.map((values) => newRecord(values)),
-        views: [newView('table', 'All items'), kanban, gallery]
+        views: [newView('table', 'All items'), kanban, gallery, dashboard]
       }
     ]
   }

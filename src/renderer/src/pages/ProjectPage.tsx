@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   CalendarDays,
+  ChartColumn,
   ChevronDown,
   GalleryVertical,
   Plus,
@@ -36,6 +37,7 @@ import { TableView } from '@/views/TableView'
 import { KanbanView } from '@/views/KanbanView'
 import { GalleryView } from '@/views/GalleryView'
 import { CalendarView } from '@/views/CalendarView'
+import { DashboardView } from '@/views/DashboardView'
 import * as ops from '@/lib/ops'
 import { detectDelimiter, parseDelimited, serializeDelimited } from '@/lib/csv'
 import { csvRows, tableFromCsv } from '@/lib/csvTable'
@@ -58,8 +60,18 @@ export const VIEW_ICONS: Record<ViewType, LucideIcon> = {
   table: Table2,
   kanban: SquareKanban,
   gallery: GalleryVertical,
-  calendar: CalendarDays
+  calendar: CalendarDays,
+  dashboard: ChartColumn
 }
+
+/** View types a table can add, in the order the menu offers them. */
+const VIEW_TYPE_LABELS: { type: ViewType; label: string }[] = [
+  { type: 'table', label: 'Table' },
+  { type: 'kanban', label: 'Kanban' },
+  { type: 'gallery', label: 'Gallery' },
+  { type: 'calendar', label: 'Calendar' },
+  { type: 'dashboard', label: 'Dashboard' }
+]
 
 export interface ViewProps {
   projectId: string
@@ -181,6 +193,11 @@ export default function ProjectPage(): React.JSX.Element {
               update={update}
               onOpenRecord={setOpenRecordId}
             />
+          )}
+          {/* A dashboard shows aggregates rather than rows, so nothing on it
+              opens a record. */}
+          {activeTable && activeView?.type === 'dashboard' && (
+            <DashboardView table={activeTable} view={activeView} update={update} />
           )}
         </div>
 
@@ -575,7 +592,7 @@ function ViewTabs({
           }
         />
         <DropdownMenuContent align="start">
-          {(['table', 'kanban', 'gallery', 'calendar'] as const).map((type) => {
+          {VIEW_TYPE_LABELS.map(({ type, label }) => {
             const Icon = VIEW_ICONS[type]
             return (
               <DropdownMenuItem
@@ -589,13 +606,7 @@ function ViewTabs({
                 }
               >
                 <Icon />
-                {type === 'table'
-                  ? 'Table'
-                  : type === 'kanban'
-                    ? 'Kanban'
-                    : type === 'gallery'
-                      ? 'Gallery'
-                      : 'Calendar'}
+                {label}
               </DropdownMenuItem>
             )
           })}
