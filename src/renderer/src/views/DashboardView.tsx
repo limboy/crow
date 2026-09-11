@@ -128,23 +128,6 @@ export function DashboardView({
                   isFirst={index === 0}
                   isLast={index === config.charts.length - 1}
                   onOpenRecord={onOpenRecord}
-                  onPatch={(patch) =>
-                    update((t) =>
-                      ops.patchView(t, view.id, (v) =>
-                        v.type === 'dashboard'
-                          ? {
-                              ...v,
-                              config: {
-                                ...v.config,
-                                charts: v.config.charts.map((c) =>
-                                  c.id === chart.id ? { ...c, ...patch } : c
-                                )
-                              }
-                            }
-                          : v
-                      )
-                    )
-                  }
                   onEdit={() => openChart(chart)}
                   onDuplicate={() => update((t) => ops.duplicateChart(t, view.id, chart.id))}
                   onMove={(offset) => update((t) => ops.moveChart(t, view.id, chart.id, offset))}
@@ -179,7 +162,6 @@ function ChartCard({
   isFirst,
   isLast,
   onEdit,
-  onPatch,
   onOpenRecord,
   onDuplicate,
   onMove,
@@ -192,7 +174,6 @@ function ChartCard({
   isFirst: boolean
   isLast: boolean
   onEdit: () => void
-  onPatch: (patch: Partial<ChartSpec>) => void
   onOpenRecord: (recordId: string) => void
   onDuplicate: () => void
   onMove: (offset: number) => void
@@ -261,17 +242,6 @@ function ChartCard({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-
-      <div className="flex items-center">
-        <FilterPopover
-          label="Chart filters"
-          fields={table.fields}
-          filters={chart.filters ?? []}
-          match={chart.filterMatch ?? 'all'}
-          onChange={(filters) => onPatch({ filters })}
-          onMatchChange={(filterMatch) => onPatch({ filterMatch })}
-        />
       </div>
 
       <ChartFigure
