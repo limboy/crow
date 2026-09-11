@@ -783,7 +783,7 @@ export function TableView({
                   </div>
                 )}
               </th>
-              {visibleFields.map((field) => {
+              {visibleFields.map((field, columnIndex) => {
                 const info = fieldTypeInfo(field.type)
                 const width = columnWidth(field.id)
                 return (
@@ -908,6 +908,33 @@ export function TableView({
                         >
                           Insert right
                         </DropdownMenuItem>
+                        {visibleFields.length > 1 && (
+                          <>
+                            <DropdownMenuSeparator />
+                            {/* Moves the field past its visible neighbour, so a
+                                hidden column in between doesn't swallow the move. */}
+                            <DropdownMenuItem
+                              disabled={columnIndex === 0}
+                              onClick={() =>
+                                update((p) =>
+                                  ops.moveField(p, field.id, visibleFields[columnIndex - 1].id)
+                                )
+                              }
+                            >
+                              Move left
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={columnIndex === visibleFields.length - 1}
+                              onClick={() =>
+                                update((p) =>
+                                  ops.moveField(p, field.id, visibleFields[columnIndex + 1].id)
+                                )
+                              }
+                            >
+                              Move right
+                            </DropdownMenuItem>
+                          </>
+                        )}
                         {table.fields.length > 1 && (
                           <>
                             <DropdownMenuSeparator />

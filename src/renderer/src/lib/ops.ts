@@ -538,6 +538,21 @@ export function addField(table: Table, field: Field, index?: number): Table {
   return { ...table, fields }
 }
 
+/** Moves `fieldId` to where `targetFieldId` sits, sliding the fields in
+ *  between over to make room. Field order belongs to the table rather than to
+ *  a view, so the column moves everywhere the field shows. */
+export function moveField(table: Table, fieldId: string, targetFieldId: string): Table {
+  const from = table.fields.findIndex((f) => f.id === fieldId)
+  const to = table.fields.findIndex((f) => f.id === targetFieldId)
+  if (from === -1 || to === -1 || from === to) return table
+  const fields = [...table.fields]
+  const [moved] = fields.splice(from, 1)
+  // `to` was read before the removal, which is what puts the field past the
+  // target when moving right and before it when moving left.
+  fields.splice(to, 0, moved)
+  return { ...table, fields }
+}
+
 export function updateField(table: Table, fieldId: string, patch: Partial<Field>): Table {
   return {
     ...table,
