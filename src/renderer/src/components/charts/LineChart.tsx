@@ -24,9 +24,11 @@ const MAX_AXIS_LABELS = 6
  */
 export function LineChart({
   buckets,
+  onBucketClick,
   formatValue
 }: {
   buckets: ChartBucket[]
+  onBucketClick: (bucket: ChartBucket) => void
   formatValue: (value: number) => string
 }): React.JSX.Element {
   const [plotRef, plotWidth] = useElementWidth<HTMLDivElement>()
@@ -75,7 +77,9 @@ export function LineChart({
               key={tick}
               aria-hidden
               className={
-                tick === 0 ? 'absolute inset-x-0 h-px bg-border' : 'absolute inset-x-0 h-px bg-border/60'
+                tick === 0
+                  ? 'absolute inset-x-0 h-px bg-border'
+                  : 'absolute inset-x-0 h-px bg-border/60'
               }
               style={{ bottom: `${((tick - min) / span) * 100}%` }}
             />
@@ -147,10 +151,14 @@ export function LineChart({
               >
                 <button
                   type="button"
+                  onClick={() => onBucketClick(point.bucket)}
+                  aria-label={`View records: ${point.bucket.label}, ${formatValue(point.bucket.value)}`}
                   className="absolute inset-y-0"
                   style={{ left: Math.max(0, point.x - hitWidth / 2), width: hitWidth }}
                   onPointerEnter={() => setHovered(index)}
-                  onPointerLeave={() => setHovered((current) => (current === index ? null : current))}
+                  onPointerLeave={() =>
+                    setHovered((current) => (current === index ? null : current))
+                  }
                   onFocus={() => setHovered(index)}
                   onBlur={() => setHovered((current) => (current === index ? null : current))}
                 >

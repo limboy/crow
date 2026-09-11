@@ -21,10 +21,12 @@ const SLICE_GAP = 2
  */
 export function DonutChart({
   buckets,
+  onBucketClick,
   formatValue,
   centerLabel
 }: {
   buckets: ChartBucket[]
+  onBucketClick: (bucket: ChartBucket) => void
   formatValue: (value: number) => string
   centerLabel: string
 }): React.JSX.Element {
@@ -50,6 +52,7 @@ export function DonutChart({
               <path
                 key={slice.bucket.key}
                 d={path}
+                onClick={() => onBucketClick(slice.bucket)}
                 fill={chartColor(slice.bucket.colorIndex)}
                 className="transition-opacity"
                 opacity={hovered === null || hovered === slice.bucket.key ? 1 : 0.35}
@@ -78,6 +81,8 @@ export function DonutChart({
           <li key={slice.bucket.key}>
             <button
               type="button"
+              onClick={() => onBucketClick(slice.bucket)}
+              aria-label={`View records: ${slice.bucket.label}, ${formatValue(slice.bucket.value)}`}
               className={cn(
                 'flex w-full items-center gap-2 rounded-sm px-1 py-0.5 text-left transition-colors hover:bg-accent/60',
                 hovered !== null && hovered !== slice.bucket.key && 'opacity-60'

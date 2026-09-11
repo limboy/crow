@@ -1,11 +1,4 @@
-import {
-  addDays,
-  addMonths,
-  addWeeks,
-  addYears,
-  format as formatDate,
-  startOfWeek
-} from 'date-fns'
+import { addDays, addMonths, addWeeks, addYears, format as formatDate, startOfWeek } from 'date-fns'
 import { ChartBar, ChartColumn, ChartLine, ChartPie, Hash, type LucideIcon } from 'lucide-react'
 import type {
   ChartAggregate,
@@ -27,7 +20,7 @@ import {
   recordLabel,
   relationTable
 } from './fields'
-import { groupRecords } from './derive'
+import { applyFilters, groupRecords } from './derive'
 import { numberValues } from './summary'
 
 /**
@@ -191,6 +184,8 @@ export interface ChartBucket {
   value: number
   /** Records behind the bucket, which the table twin reports alongside. */
   count: number
+  /** Unique source rows, including all categories folded into Other. */
+  recordIds: string[]
 }
 
 export interface ChartData {
@@ -199,6 +194,7 @@ export interface ChartData {
   total: number
   /** Records the chart aggregated over. */
   recordCount: number
+  recordIds: string[]
   /** Categories folded into the trailing "Other" bucket, 0 when none were. */
   folded: number
   /** Buckets dropped off the old end of a timeline to honour the limit. */
@@ -207,7 +203,14 @@ export interface ChartData {
   note?: string
 }
 
-const EMPTY_DATA: ChartData = { buckets: [], total: 0, recordCount: 0, folded: 0, trimmed: 0 }
+const EMPTY_DATA: ChartData = {
+  buckets: [],
+  total: 0,
+  recordCount: 0,
+  recordIds: [],
+  folded: 0,
+  trimmed: 0
+}
 
 /** One bucket before it's been aggregated. */
 interface RawBucket {
@@ -222,7 +225,10 @@ function grainStart(grain: ChartDateGrain, date: string): string {
     case 'day':
       return date
     case 'week':
-      return formatDate(startOfWeek(new Date(`${date}T00:00:00`), { weekStartsOn: 1 }), 'yyyy-MM-dd')
+      return formatDate(
+        startOfWeek(new Date(`${date}T00:00:00`), { weekStartsOn: 1 }),
+        'yyyy-MM-dd'
+      )
     case 'month':
       return date.slice(0, 7)
     case 'year':
@@ -330,7 +336,8 @@ function multiValueBuckets(records: RecordRow[], field: Field, tables: Table[]):
     // filtered or the linked record renamed.
     const target = relationTable(field, tables)
     target?.records.forEach((record, index) => {
-      if (byKey.has(record.id)) order.set(record.id, { label: recordLabel(target, record), colorIndex: index })
+      if (byKey.has(record.id))
+        order.set(record.id, { label: recordLabel(target, record), colorIndex: index })
     })
     for (const id of byKey.keys()) {
       // A link whose record was deleted in the other table isn't a category
@@ -418,8 +425,8 @@ function effectiveLimit(spec: ChartSpec): number {
 
 /**
  * Everything a chart draws, derived from the records the view is already
- * showing (its filters applied upstream, the same slice for every chart on the
- * dashboard).
+ * showing, narrowed by the chart’s own filters. Dashboard filters are applied
+ * upstream, so a chart can never re-include a row the dashboard excluded.
  */
 export function chartData(
   spec: ChartSpec,
@@ -431,9 +438,11 @@ export function chartData(
   const valueField = fields.find((f) => f.id === spec.valueFieldId)
   if (chartIssue(spec, fields)) return EMPTY_DATA
 
+  records = applyFilters(records, spec.filters ?? [], fields, spec.filterMatch ?? 'all')
+  const recordIds = records.map((record) => record.id)
   const total = aggregateRecords(records, spec.aggregate, valueField)
   if (spec.type === 'metric' || !groupField) {
-    return { ...EMPTY_DATA, total: total ?? 0, recordCount: records.length }
+    return { ...EMPTY_DATA, total: total ?? 0, recordCount: records.length, recordIds }
   }
 
   const grain = spec.dateGrain ?? 'month'
@@ -499,22 +508,26 @@ export function chartData(
     }
   }
 
-  const buckets: ChartBucket[] = plotted.map(({ key, label, colorIndex, value, count }) => ({
-    key,
-    label,
-    colorIndex,
-    value,
-    count
-  }))
+  const buckets: ChartBucket[] = plotted.map(
+    ({ key, label, colorIndex, value, count, records }) => ({
+      key,
+      label,
+      colorIndex,
+      value,
+      count,
+      recordIds: [...new Set(records.map((record) => record.id))]
+    })
+  )
   if (spec.type === 'donut' && buckets.some((bucket) => bucket.value < 0)) {
     return {
       ...EMPTY_DATA,
       total: total ?? 0,
       recordCount: records.length,
+      recordIds,
       note: 'A donut can\u2019t show negative values \u2014 try a bar chart.'
     }
   }
-  return { buckets, total: total ?? 0, recordCount: records.length, folded, trimmed }
+  return { buckets, total: total ?? 0, recordCount: records.length, recordIds, folded, trimmed }
 }
 
 /** Full-precision value text, for tooltips, direct labels and the table twin. */

@@ -194,10 +194,14 @@ export default function ProjectPage(): React.JSX.Element {
               onOpenRecord={setOpenRecordId}
             />
           )}
-          {/* A dashboard shows aggregates rather than rows, so nothing on it
-              opens a record. */}
           {activeTable && activeView?.type === 'dashboard' && (
-            <DashboardView table={activeTable} view={activeView} update={update} />
+            <DashboardView
+              key={activeView.id}
+              table={activeTable}
+              view={activeView}
+              update={update}
+              onOpenRecord={setOpenRecordId}
+            />
           )}
         </div>
 

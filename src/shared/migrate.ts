@@ -230,6 +230,8 @@ function normalizeCharts(value: unknown): ChartSpec[] {
         id: typeof chart.id === 'string' && chart.id !== '' ? chart.id : crypto.randomUUID(),
         name: typeof chart.name === 'string' ? chart.name : '',
         type: chart.type as ChartType,
+        filters: Array.isArray(chart.filters) ? chart.filters : [],
+        filterMatch: chart.filterMatch === 'any' ? 'any' : 'all',
         aggregate: CHART_AGGREGATES.includes(chart.aggregate as ChartAggregate)
           ? (chart.aggregate as ChartAggregate)
           : 'count'

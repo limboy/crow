@@ -529,6 +529,7 @@ function deleteFieldEverywhere(table, fieldId) {
     // A dashboard chart that read the field keeps its place and falls back to
     // the app's "pick a field" prompt.
     for (const chart of config.charts ?? []) {
+      if (chart.filters) chart.filters = chart.filters.filter((rule) => rule.fieldId !== fieldId)
       if (chart.groupByFieldId === fieldId) chart.groupByFieldId = undefined
       if (chart.valueFieldId === fieldId) chart.valueFieldId = undefined
     }

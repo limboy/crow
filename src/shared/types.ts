@@ -257,6 +257,9 @@ export interface ChartSpec {
    *  tail into one "Other" bucket, a chronological one keeps the most recent. */
   limit?: number
   size?: ChartSize
+  /** Applied after the dashboard filters; unset includes all dashboard records. */
+  filters?: FilterRule[]
+  filterMatch?: FilterMatch
 }
 
 export interface DashboardViewConfig extends ViewRules {

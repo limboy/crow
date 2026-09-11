@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import type { ChartSpec, Field, RecordRow, Table } from '@shared/types'
+import { useMemo, useState } from 'react'
+import type { ChartSpec, RecordRow, Table } from '@shared/types'
 import {
   CHART_SERIES_COLOR,
   chartCategoryLabel,
@@ -17,6 +17,15 @@ import { ColumnChart } from './ColumnChart'
 import { DonutChart } from './DonutChart'
 import { LineChart } from './LineChart'
 import { MetricTile } from './MetricTile'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription
+} from '@/components/ui/dialog'
+import { recordLabel } from '@/lib/fields'
 
 /**
  * One chart's body: it derives the chart's numbers from the records the view
@@ -28,17 +37,21 @@ import { MetricTile } from './MetricTile'
  */
 export function ChartFigure({
   spec,
-  fields,
+  table,
+  onOpenRecord,
   records,
   tables,
   showTable
 }: {
   spec: ChartSpec
-  fields: Field[]
+  table: Table
+  onOpenRecord: (recordId: string) => void
   records: RecordRow[]
   tables: Table[]
   showTable: boolean
 }): React.JSX.Element {
+  const fields = table.fields
+  const [selection, setSelection] = useState<{ key?: string } | null>(null)
   // Walks every record the view shows, so it stays off the path of renders that
   // only opened a menu or moved a tile.
   const data = useMemo(
@@ -53,13 +66,74 @@ export function ChartFigure({
   if (issue) return <ChartNote>{issue}</ChartNote>
   if (data.note) return <ChartNote>{data.note}</ChartNote>
 
+  const selectedBucket =
+    selection?.key === undefined
+      ? undefined
+      : data.buckets.find((bucket) => bucket.key === selection.key)
+  const selectedIds = new Set(
+    !selection ? [] : selection.key === undefined ? data.recordIds : (selectedBucket?.recordIds ?? [])
+  )
+  const selectedRecords = selection ? records.filter((record) => selectedIds.has(record.id)) : []
+  const onBucketClick = (bucket: ChartBucket): void => setSelection({ key: bucket.key })
+  const drillDown = (
+    <Dialog open={selection !== null} onOpenChange={(open) => !open && setSelection(null)}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {title}
+            {selectedBucket ? ` · ${selectedBucket.label}` : ''}
+          </DialogTitle>
+          <DialogDescription>
+            {selectedRecords.length.toLocaleString()}{' '}
+            {selectedRecords.length === 1 ? 'record' : 'records'}. Select a record to view or edit
+            it.
+            {selectedBucket &&
+              selectedBucket.count > selectedRecords.length &&
+              ' Records belonging to multiple categories are listed once.'}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto">
+          {selectedRecords.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">
+              No records in this group.
+            </p>
+          ) : (
+            selectedRecords.map((record) => (
+              <Button
+                key={record.id}
+                variant="ghost"
+                className="w-full justify-start"
+                onClick={() => {
+                  setSelection(null)
+                  onOpenRecord(record.id)
+                }}
+              >
+                <span className="truncate">{recordLabel(table, record)}</span>
+              </Button>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+
   if (spec.type === 'metric') {
     return (
-      <MetricTile
-        value={formatCompactValue(data.total)}
-        label={title === measure ? undefined : measure}
-        recordCount={data.recordCount}
-      />
+      <>
+        <button
+          type="button"
+          className="w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={`View records: ${title}, ${formatValue(data.total)}`}
+          onClick={() => setSelection({})}
+        >
+          <MetricTile
+            value={formatCompactValue(data.total)}
+            label={title === measure ? undefined : measure}
+            recordCount={data.recordCount}
+          />
+        </button>
+        {drillDown}
+      </>
     )
   }
 
@@ -76,17 +150,28 @@ export function ChartFigure({
           measure={measure}
           formatValue={formatValue}
           colored={spec.type === 'donut'}
+          onBucketClick={onBucketClick}
           showCounts={spec.aggregate !== 'count'}
         />
       ) : spec.type === 'bar' ? (
-        <BarChart buckets={data.buckets} formatValue={formatValue} />
+        <BarChart onBucketClick={onBucketClick} buckets={data.buckets} formatValue={formatValue} />
       ) : spec.type === 'column' ? (
-        <ColumnChart buckets={data.buckets} formatValue={formatValue} />
+        <ColumnChart
+          onBucketClick={onBucketClick}
+          buckets={data.buckets}
+          formatValue={formatValue}
+        />
       ) : spec.type === 'line' ? (
-        <LineChart buckets={data.buckets} formatValue={formatValue} />
+        <LineChart onBucketClick={onBucketClick} buckets={data.buckets} formatValue={formatValue} />
       ) : (
-        <DonutChart buckets={data.buckets} formatValue={formatValue} centerLabel={measure} />
+        <DonutChart
+          onBucketClick={onBucketClick}
+          buckets={data.buckets}
+          formatValue={formatValue}
+          centerLabel={measure}
+        />
       )}
+      {drillDown}
       <ChartFootnote folded={data.folded} trimmed={data.trimmed} shown={data.buckets.length} />
     </div>
   )
@@ -127,7 +212,8 @@ function ChartTable({
   measure,
   formatValue,
   colored,
-  showCounts
+  showCounts,
+  onBucketClick
 }: {
   buckets: ChartBucket[]
   categoryLabel: string
@@ -137,6 +223,7 @@ function ChartTable({
   colored: boolean
   /** Off when the measure is the record count, which would print twice. */
   showCounts: boolean
+  onBucketClick: (bucket: ChartBucket) => void
 }): React.JSX.Element {
   return (
     <div className="max-h-72 overflow-y-auto">
@@ -160,7 +247,15 @@ function ChartTable({
                       background: colored ? chartColor(bucket.colorIndex) : CHART_SERIES_COLOR
                     }}
                   />
-                  <span className="truncate">{bucket.label}</span>
+                  <Button
+                    variant="link"
+                    size="xs"
+                    className="min-w-0 px-0"
+                    onClick={() => onBucketClick(bucket)}
+                    aria-label={`View records: ${bucket.label}`}
+                  >
+                    <span className="truncate">{bucket.label}</span>
+                  </Button>
                 </span>
               </td>
               <td className="py-1.5 pr-2 text-right tabular-nums">{formatValue(bucket.value)}</td>

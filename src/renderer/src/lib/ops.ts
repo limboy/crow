@@ -618,6 +618,7 @@ export function deleteField(table: Table, fieldId: string): Table {
             ...shared,
             charts: view.config.charts.map((chart) => ({
               ...chart,
+              filters: chart.filters?.filter((rule) => rule.fieldId !== fieldId),
               groupByFieldId: chart.groupByFieldId === fieldId ? undefined : chart.groupByFieldId,
               valueFieldId: chart.valueFieldId === fieldId ? undefined : chart.valueFieldId
             }))

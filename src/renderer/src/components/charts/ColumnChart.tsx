@@ -22,9 +22,11 @@ const AXIS_WIDTH = 40
  */
 export function ColumnChart({
   buckets,
+  onBucketClick,
   formatValue
 }: {
   buckets: ChartBucket[]
+  onBucketClick: (bucket: ChartBucket) => void
   formatValue: (value: number) => string
 }): React.JSX.Element {
   const [plotRef, plotWidth] = useElementWidth<HTMLDivElement>()
@@ -34,7 +36,8 @@ export function ColumnChart({
   const span = max - min || 1
   const zero = ((0 - min) / span) * 100
 
-  const band = buckets.length > 0 ? (plotWidth - COLUMN_GAP * (buckets.length - 1)) / buckets.length : 0
+  const band =
+    buckets.length > 0 ? (plotWidth - COLUMN_GAP * (buckets.length - 1)) / buckets.length : 0
   const labels = buckets.map((bucket) => formatValue(bucket.value))
   // Rough advance width for the 10px axis face; the check only has to be
   // conservative, not exact.
@@ -66,7 +69,11 @@ export function ColumnChart({
             <div
               key={tick}
               aria-hidden
-              className={tick === 0 ? 'absolute inset-x-0 h-px bg-border' : 'absolute inset-x-0 h-px bg-border/60'}
+              className={
+                tick === 0
+                  ? 'absolute inset-x-0 h-px bg-border'
+                  : 'absolute inset-x-0 h-px bg-border/60'
+              }
               style={{ bottom: `${((tick - min) / span) * 100}%` }}
             />
           ))}
@@ -96,6 +103,8 @@ export function ColumnChart({
                   >
                     <button
                       type="button"
+                      onClick={() => onBucketClick(bucket)}
+                      aria-label={`View records: ${bucket.label}, ${formatValue(bucket.value)}`}
                       className="absolute left-1/2 w-full -translate-x-1/2 transition-opacity hover:opacity-85"
                       style={{
                         maxWidth: MAX_COLUMN_WIDTH,

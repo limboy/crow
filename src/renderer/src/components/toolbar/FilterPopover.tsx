@@ -19,12 +19,14 @@ const uuid = (): string => crypto.randomUUID()
 
 export function FilterPopover({
   fields,
+  label = 'Filter',
   filters,
   match,
   onMatchChange,
   onChange
 }: {
   fields: Field[]
+  label?: string
   filters: FilterRule[]
   match: FilterMatch
   onMatchChange: (match: FilterMatch) => void
@@ -49,7 +51,7 @@ export function FilterPopover({
         render={
           <ToolbarButton
             icon={ListFilter}
-            label="Filter"
+            label={label}
             count={filters.length > 0 ? filters.length : undefined}
             active={filters.length > 0}
           />

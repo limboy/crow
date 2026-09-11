@@ -16,10 +16,12 @@ const BAR_THICKNESS = 20
  */
 export function BarChart({
   buckets,
+  onBucketClick,
   formatValue,
   color = CHART_SERIES_COLOR
 }: {
   buckets: ChartBucket[]
+  onBucketClick: (bucket: ChartBucket) => void
   formatValue: (value: number) => string
   /** Overridden only where a bucket's identity is the point; a plain bar chart
    *  draws every bar in one hue, because length already carries the size. */
@@ -62,6 +64,8 @@ export function BarChart({
               >
                 <button
                   type="button"
+                  onClick={() => onBucketClick(bucket)}
+                  aria-label={`View records: ${bucket.label}, ${formatValue(bucket.value)}`}
                   className="absolute transition-opacity hover:opacity-85"
                   style={{
                     top: 3,

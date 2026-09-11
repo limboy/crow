@@ -24,8 +24,7 @@ type DashboardViewType = Extract<View, { type: 'dashboard' }>
 
 /**
  * Charts composed from the table's own records. Every chart on the view reads
- * the same slice — the view's filters, applied once here — so the numbers on
- * one card always agree with the numbers on the next.
+ * the view's filtered slice, then applies its own optional filters.
  *
  * A dashboard doesn't sort or hide fields: it shows aggregates, not rows, and
  * each chart decides its own bucket order.
@@ -33,11 +32,13 @@ type DashboardViewType = Extract<View, { type: 'dashboard' }>
 export function DashboardView({
   table,
   view,
-  update
+  update,
+  onOpenRecord
 }: {
   table: Table
   view: DashboardViewType
   update: TableUpdater
+  onOpenRecord: (recordId: string) => void
 }): React.JSX.Element {
   const config = view.config
   // Only read to bucket by a relation field, whose labels live in a sibling
@@ -94,7 +95,8 @@ export function DashboardView({
         />
         <span className="ml-auto text-[13px] text-muted-foreground">
           {records.length.toLocaleString()} {records.length === 1 ? 'record' : 'records'}
-          {records.length !== table.records.length && ` of ${table.records.length.toLocaleString()}`}
+          {records.length !== table.records.length &&
+            ` of ${table.records.length.toLocaleString()}`}
         </span>
       </div>
 
@@ -114,8 +116,8 @@ export function DashboardView({
         </div>
       ) : (
         <TooltipProvider delay={100}>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] items-start gap-4">
+          <div className="@container min-h-0 flex-1 overflow-y-auto p-4">
+            <div className="grid grid-cols-1 items-start gap-4 @min-[656px]:grid-cols-2">
               {config.charts.map((chart, index) => (
                 <ChartCard
                   key={chart.id}
@@ -125,6 +127,24 @@ export function DashboardView({
                   tables={tables}
                   isFirst={index === 0}
                   isLast={index === config.charts.length - 1}
+                  onOpenRecord={onOpenRecord}
+                  onPatch={(patch) =>
+                    update((t) =>
+                      ops.patchView(t, view.id, (v) =>
+                        v.type === 'dashboard'
+                          ? {
+                              ...v,
+                              config: {
+                                ...v.config,
+                                charts: v.config.charts.map((c) =>
+                                  c.id === chart.id ? { ...c, ...patch } : c
+                                )
+                              }
+                            }
+                          : v
+                      )
+                    )
+                  }
                   onEdit={() => openChart(chart)}
                   onDuplicate={() => update((t) => ops.duplicateChart(t, view.id, chart.id))}
                   onMove={(offset) => update((t) => ops.moveChart(t, view.id, chart.id, offset))}
@@ -159,6 +179,8 @@ function ChartCard({
   isFirst,
   isLast,
   onEdit,
+  onPatch,
+  onOpenRecord,
   onDuplicate,
   onMove,
   onDelete
@@ -170,6 +192,8 @@ function ChartCard({
   isFirst: boolean
   isLast: boolean
   onEdit: () => void
+  onPatch: (patch: Partial<ChartSpec>) => void
+  onOpenRecord: (recordId: string) => void
   onDuplicate: () => void
   onMove: (offset: number) => void
   onDelete: () => void
@@ -184,7 +208,7 @@ function ChartCard({
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs',
+        'flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs',
         chart.size === 'full' && 'col-span-full'
       )}
     >
@@ -239,9 +263,21 @@ function ChartCard({
         </DropdownMenu>
       </div>
 
+      <div className="flex items-center">
+        <FilterPopover
+          label="Chart filters"
+          fields={table.fields}
+          filters={chart.filters ?? []}
+          match={chart.filterMatch ?? 'all'}
+          onChange={(filters) => onPatch({ filters })}
+          onMatchChange={(filterMatch) => onPatch({ filterMatch })}
+        />
+      </div>
+
       <ChartFigure
         spec={chart}
-        fields={table.fields}
+        table={table}
+        onOpenRecord={onOpenRecord}
         records={records}
         tables={tables}
         showTable={showTable}

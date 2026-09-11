@@ -37,6 +37,7 @@ import {
   chartTitle,
   isDateGroupField
 } from '@/lib/charts'
+import { FilterPopover } from '@/components/toolbar/FilterPopover'
 import { fieldTypeInfo } from '@/lib/fields'
 
 /** Bucket counts offered in the picker. */
@@ -92,7 +93,7 @@ export function ChartDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{chart ? 'Edit chart' : 'New chart'}</DialogTitle>
         </DialogHeader>
@@ -188,7 +189,9 @@ export function ChartDialog({
             <div className="flex flex-col gap-1.5">
               <Label>Bucket by</Label>
               <Select
-                items={Object.fromEntries(CHART_DATE_GRAINS.map((info) => [info.value, info.label]))}
+                items={Object.fromEntries(
+                  CHART_DATE_GRAINS.map((info) => [info.value, info.label])
+                )}
                 value={draft.dateGrain ?? 'month'}
                 onValueChange={(v) => patch({ dateGrain: v as ChartDateGrain })}
               >
@@ -227,6 +230,20 @@ export function ChartDialog({
               </Select>
             </div>
           )}
+
+          <div className="flex flex-col gap-1.5">
+            <FilterPopover
+              label="Chart filters"
+              fields={fields}
+              filters={draft.filters ?? []}
+              match={draft.filterMatch ?? 'all'}
+              onChange={(filters) => patch({ filters })}
+              onMatchChange={(filterMatch) => patch({ filterMatch })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Applied in addition to the dashboard filters.
+            </p>
+          </div>
 
           <div className="flex gap-3">
             {grouped && (

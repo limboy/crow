@@ -346,7 +346,8 @@ it. A table with no views opens on an empty state, so include at least one. Each
 
 A dashboard's `hiddenFieldIds` is carried for uniformity and ignored — the view
 shows aggregates rather than fields. Its `filters`/`filterMatch` do apply, and
-scope every chart on it, so the numbers on one card always agree with the next.
+scope every chart on it. Each chart can further narrow that slice with its own
+filters; chart filters never include records excluded by the dashboard.
 
 ### `charts`
 
@@ -366,6 +367,14 @@ anything merely unset renders a "pick a field" prompt on the card.
 | `sort` | no | `category` (the field's own order), `valueDesc` or `valueAsc`. Unset sorts a date grouping chronologically and everything else by value, largest first. |
 | `limit` | no | Most buckets to plot; unset is 8, and a donut is capped at 6 whatever this says. A categorical grouping folds its smallest categories into one trailing `Other`; a date grouping keeps the most recent periods instead. Either way the card says what it left out. |
 | `size` | no | `half` (default) or `full` width in the dashboard grid. |
+| `filters` | no | Additional filter rules in the same format as view filters; defaults to `[]`. Applied after dashboard filters. |
+| `filterMatch` | no | `all` (default) or `any`, combining only this chart’s rules. |
+
+Click a chart mark, number tile, or category in the values table to list its
+source records, then select a record to open the editor. Drill-down respects
+both filter scopes and includes every category folded into `Other`. Multi-value
+groups list each source record once, even when the plotted count includes it
+in several categories. Drill-down selection is transient and is not saved.
 
 ## Assets
 
