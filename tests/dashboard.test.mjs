@@ -129,3 +129,27 @@ test('saved chart filters survive migration and duplication, and field deletion 
   assert.deepEqual(legacy.filters, [])
   assert.equal(legacy.filterMatch, 'all')
 })
+
+test('a trimmed timeline pages back through the run, newest window first', () => {
+  const rows = ['01', '02', '03', '04', '05'].map((month, i) =>
+    record(`r${i}`, 1, `2026-${month}-01`)
+  )
+  const timeline = {
+    ...spec,
+    type: 'column',
+    aggregate: 'count',
+    groupByFieldId: 'date',
+    limit: 2
+  }
+  const latest = chartData(timeline, fields, rows)
+  assert.deepEqual(latest.buckets.map((b) => b.key), ['2026-04', '2026-05'])
+  assert.deepEqual([latest.trimmedBefore, latest.trimmedAfter, latest.page], [3, 0, 0])
+  const back = chartData(timeline, fields, rows, [], 1)
+  assert.deepEqual(back.buckets.map((b) => b.key), ['2026-02', '2026-03'])
+  assert.deepEqual([back.trimmedBefore, back.trimmedAfter, back.page], [1, 2, 1])
+  // A page past the end clamps to the oldest window and reports where it landed,
+  // so the next step forward still moves.
+  const oldest = chartData(timeline, fields, rows, [], 9)
+  assert.deepEqual(oldest.buckets.map((b) => b.key), ['2026-01'])
+  assert.deepEqual([oldest.trimmedBefore, oldest.trimmedAfter, oldest.page], [0, 4, 2])
+})

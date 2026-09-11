@@ -26,6 +26,7 @@ import {
   DialogDescription
 } from '@/components/ui/dialog'
 import { recordLabel } from '@/lib/fields'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 /**
  * One chart's body: it derives the chart's numbers from the records the view
@@ -52,11 +53,13 @@ export function ChartFigure({
 }): React.JSX.Element {
   const fields = table.fields
   const [selection, setSelection] = useState<{ key?: string } | null>(null)
+  /** Which window of a timeline is on show; 0 is the most recent one. */
+  const [page, setPage] = useState(0)
   // Walks every record the view shows, so it stays off the path of renders that
   // only opened a menu or moved a tile.
   const data = useMemo(
-    () => chartData(spec, fields, records, tables),
-    [spec, fields, records, tables]
+    () => chartData(spec, fields, records, tables, page),
+    [spec, fields, records, tables, page]
   )
   const issue = chartIssue(spec, fields)
   const measure = chartMeasureLabel(spec, fields)
@@ -174,9 +177,13 @@ export function ChartFigure({
       {drillDown}
       <ChartFootnote
         folded={data.folded}
-        trimmed={data.trimmed}
+        trimmedBefore={data.trimmedBefore}
+        trimmedAfter={data.trimmedAfter}
         shown={data.buckets.length}
         dateGrain={spec.dateGrain ?? 'month'}
+        // Stepping from the page that was drawn, not the one asked for, so a
+        // click still moves after a filter has shortened the timeline.
+        onPage={(step) => setPage(Math.max(0, data.page + step))}
       />
     </div>
   )
@@ -190,25 +197,61 @@ function ChartNote({ children }: { children: React.ReactNode }): React.JSX.Eleme
   )
 }
 
-/** What the chart left out, so a trimmed axis never passes for the whole set. */
+/**
+ * What the chart left out, so a trimmed axis never passes for the whole set.
+ *
+ * A timeline that doesn't fit gets the rest of it within reach: the same
+ * sentence names the stretch on show, with a step either way around it.
+ * `onPage` moves the window back (+1) or forward (-1) in time.
+ */
 function ChartFootnote({
   folded,
-  trimmed,
+  trimmedBefore,
+  trimmedAfter,
   shown,
-  dateGrain
+  dateGrain,
+  onPage
 }: {
   folded: number
-  trimmed: number
+  trimmedBefore: number
+  trimmedAfter: number
   shown: number
   dateGrain: NonNullable<ChartSpec['dateGrain']>
+  onPage: (step: number) => void
 }): React.JSX.Element | null {
-  if (folded === 0 && trimmed === 0) return null
+  const total = trimmedBefore + shown + trimmedAfter
+  if (folded === 0 && trimmedBefore === 0 && trimmedAfter === 0) return null
+  if (folded > 0) {
+    return (
+      <p className="text-[11px] text-muted-foreground">
+        {`${folded} smaller ${folded === 1 ? 'category' : 'categories'} folded into Other.`}
+      </p>
+    )
+  }
   return (
-    <p className="text-[11px] text-muted-foreground">
-      {folded > 0
-        ? `${folded} smaller ${folded === 1 ? 'category' : 'categories'} folded into Other.`
-        : `Showing the latest ${shown} of ${shown + trimmed} ${dateGrain}s.`}
-    </p>
+    <div className="flex items-center justify-center gap-1 text-[11px] text-muted-foreground">
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        disabled={trimmedBefore === 0}
+        onClick={() => onPage(1)}
+        aria-label={`Show the previous ${shown} ${dateGrain}s`}
+      >
+        <ChevronLeft />
+      </Button>
+      <span className="tabular-nums">
+        {`${(trimmedBefore + 1).toLocaleString()}\u2013${(trimmedBefore + shown).toLocaleString()} of ${total.toLocaleString()} ${dateGrain}s`}
+      </span>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        disabled={trimmedAfter === 0}
+        onClick={() => onPage(-1)}
+        aria-label={`Show the next ${shown} ${dateGrain}s`}
+      >
+        <ChevronRight />
+      </Button>
+    </div>
   )
 }
 

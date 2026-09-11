@@ -197,8 +197,14 @@ export interface ChartData {
   recordIds: string[]
   /** Categories folded into the trailing "Other" bucket, 0 when none were. */
   folded: number
-  /** Buckets dropped off the old end of a timeline to honour the limit. */
-  trimmed: number
+  /** Timeline buckets hidden before and after the window on show, 0 when the
+   *  whole timeline fits. Together they decide whether paging can go either
+   *  way, and where the window sits in the run. */
+  trimmedBefore: number
+  trimmedAfter: number
+  /** The page actually drawn, clamped into range — the caller's own page can
+   *  point past the end once a filter shortens the timeline. */
+  page: number
   /** Why there's nothing to draw, when the chart is configured but unplottable. */
   note?: string
 }
@@ -209,7 +215,9 @@ const EMPTY_DATA: ChartData = {
   recordCount: 0,
   recordIds: [],
   folded: 0,
-  trimmed: 0
+  trimmedBefore: 0,
+  trimmedAfter: 0,
+  page: 0
 }
 
 /** One bucket before it's been aggregated. */
@@ -432,7 +440,10 @@ export function chartData(
   spec: ChartSpec,
   fields: Field[],
   records: RecordRow[],
-  tables: Table[] = []
+  tables: Table[] = [],
+  /** Which window of a timeline to draw: 0 is the most recent one, and each
+   *  step goes a further window back. Ignored by every other grouping. */
+  page = 0
 ): ChartData {
   const groupField = fields.find((f) => f.id === spec.groupByFieldId)
   const valueField = fields.find((f) => f.id === spec.valueFieldId)
@@ -460,13 +471,21 @@ export function chartData(
   const limit = effectiveLimit(spec)
   let plotted = aggregated
   let folded = 0
-  let trimmed = 0
+  let trimmedBefore = 0
+  let trimmedAfter = 0
+  let paged = 0
 
   if (chronological) {
     // A timeline can't fold its tail into "Other" without lying about when
-    // things happened, so it keeps the recent end and says what it dropped.
-    trimmed = Math.max(0, plotted.length - limit)
-    plotted = plotted.slice(trimmed)
+    // things happened, so it draws one window at a time, starting at the
+    // recent end, and says which stretch of the run that is.
+    const pageCount = Math.max(1, Math.ceil(plotted.length / limit))
+    paged = Math.min(Math.max(Math.trunc(page), 0), pageCount - 1)
+    const end = Math.max(0, plotted.length - paged * limit)
+    const start = Math.max(0, end - limit)
+    trimmedBefore = start
+    trimmedAfter = plotted.length - end
+    plotted = plotted.slice(start, end)
   } else {
     const sort = effectiveSort(spec, groupField)
     if (sort !== 'category') {
@@ -527,7 +546,16 @@ export function chartData(
       note: 'A donut can\u2019t show negative values \u2014 try a bar chart.'
     }
   }
-  return { buckets, total: total ?? 0, recordCount: records.length, recordIds, folded, trimmed }
+  return {
+    buckets,
+    total: total ?? 0,
+    recordCount: records.length,
+    recordIds,
+    folded,
+    trimmedBefore,
+    trimmedAfter,
+    page: paged
+  }
 }
 
 /** Full-precision value text, for tooltips, direct labels and the table twin. */
