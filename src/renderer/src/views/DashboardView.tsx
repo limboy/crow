@@ -23,6 +23,15 @@ import { cn } from '@/lib/utils'
 type DashboardViewType = Extract<View, { type: 'dashboard' }>
 
 /**
+ * One row of the dashboard grid, in pixels: a metric tile's own height. A chart
+ * spans two rows, so a chart card stands exactly as tall as two tiles and the
+ * gap between them — which is what lets a pair of tiles sit beside a chart and
+ * end level with it. A row still grows when a card needs more, and takes the
+ * cards beside it along.
+ */
+const TILE_HEIGHT = 152
+
+/**
  * Charts composed from the table's own records. Every chart on the view reads
  * the view's filtered slice, then applies its own optional filters.
  *
@@ -117,7 +126,10 @@ export function DashboardView({
       ) : (
         <TooltipProvider delay={100}>
           <div className="@container min-h-0 flex-1 overflow-y-auto p-4">
-            <div className="grid grid-cols-1 items-start gap-4 @min-[656px]:grid-cols-2">
+            <div
+              className="grid grid-cols-1 gap-4 @min-[656px]:grid-cols-2"
+              style={{ gridAutoRows: `minmax(${TILE_HEIGHT}px, auto)` }}
+            >
               {config.charts.map((chart, index) => (
                 <ChartCard
                   key={chart.id}
@@ -190,6 +202,7 @@ function ChartCard({
     <div
       className={cn(
         'flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs',
+        chart.type === 'metric' ? 'row-span-1' : 'row-span-2',
         chart.size === 'full' && 'col-span-full'
       )}
     >

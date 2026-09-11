@@ -125,7 +125,7 @@ export function ChartFigure({
       <>
         <button
           type="button"
-          className="w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-full flex-1 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={`View records: ${title}, ${formatValue(data.total)}`}
           onClick={() => setSelection({})}
         >
