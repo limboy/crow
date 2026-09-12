@@ -64,6 +64,7 @@ import * as ops from '@/lib/ops'
 import { useProjectTables } from '@/lib/relations'
 import type { TableUpdater } from '@/lib/queries'
 import { rowHeightInfo, type RowHeightInfo } from '@/lib/rowHeight'
+import { updateRowSelection } from '@/lib/rowSelection'
 import { useAttachmentDrop, useFileDrop } from '@/lib/useFileDrop'
 import { useGridClipboard } from '@/lib/useGridClipboard'
 import { cn } from '@/lib/utils'
@@ -171,6 +172,8 @@ export function TableView({
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null)
   const [liveWidth, setLiveWidth] = useState<{ fieldId: string; width: number } | null>(null)
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set())
+  /** The last row toggled without Shift; range selection extends from here. */
+  const rowSelectionAnchorRef = useRef<string | null>(null)
   const tableRef = useRef<HTMLTableElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const summaryBarRef = useRef<HTMLDivElement>(null)
@@ -236,6 +239,10 @@ export function TableView({
   const displayedRecords = useMemo(
     () => (groups ? groups.flatMap((group) => group.records) : derived),
     [groups, derived]
+  )
+  const displayedRecordIds = useMemo(
+    () => displayedRecords.map((record) => record.id),
+    [displayedRecords]
   )
   const find = useViewFind(displayedRecords, visibleFields, tables)
 
@@ -477,16 +484,21 @@ export function TableView({
   const allVisibleSelected = derived.length > 0 && selectedVisibleCount === derived.length
   const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected
 
-  const toggleRowSelected = (recordId: string, checked: boolean): void => {
-    setSelectedRowIds((prev) => {
-      const next = new Set(prev)
-      if (checked) next.add(recordId)
-      else next.delete(recordId)
-      return next
-    })
+  const toggleRowSelected = (recordId: string, checked: boolean, extend = false): void => {
+    // Shift-clicking a row checkbox can also extend the browser's native text
+    // selection across the grid. Keep only the table's range selection visible.
+    if (extend) window.getSelection()?.removeAllRanges()
+
+    const anchorId = rowSelectionAnchorRef.current
+    const canExtend = extend && anchorId !== null && displayedRecordIds.includes(anchorId)
+    setSelectedRowIds((prev) =>
+      updateRowSelection(prev, displayedRecordIds, anchorId, recordId, checked, canExtend)
+    )
+    if (!canExtend) rowSelectionAnchorRef.current = recordId
   }
 
   const toggleSelectAll = (checked: boolean): void => {
+    rowSelectionAnchorRef.current = null
     setSelectedRowIds((prev) => {
       const next = new Set(prev)
       derived.forEach((r) => (checked ? next.add(r.id) : next.delete(r.id)))
@@ -507,6 +519,7 @@ export function TableView({
     if (!confirmed) return
     update((p) => ops.deleteRecords(p, Array.from(selectedRowIds)))
     setSelectedRowIds(new Set())
+    rowSelectionAnchorRef.current = null
   }
 
   const deleteSingleRecord = async (recordId: string): Promise<void> => {
@@ -647,7 +660,19 @@ export function TableView({
           >
             <Checkbox
               checked={isSelected}
-              onCheckedChange={(checked) => toggleRowSelected(record.id, checked === true)}
+              onMouseDown={(event) => {
+                if (event.shiftKey) event.preventDefault()
+              }}
+              onCheckedChange={(checked, details) =>
+                toggleRowSelected(
+                  record.id,
+                  checked === true,
+                  (details.event instanceof MouseEvent ||
+                    details.event instanceof KeyboardEvent) &&
+                    details.event.shiftKey
+                )
+              }
+              aria-label={`Select record ${number}`}
             />
           </div>
         </td>

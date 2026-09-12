@@ -22,7 +22,8 @@
     "dist:mac": "npm run build && electron-builder --mac --arm64",
     "dist:win": "npm run build && electron-builder --win",
     "dist:linux": "npm run build && electron-builder --linux",
-    "test:dashboard": "node --test tests/dashboard.test.mjs"
+    "test:dashboard": "node --test tests/dashboard.test.mjs",
+    "test:table-selection": "node --test tests/table-selection.test.mjs"
   },
   "devDependencies": {
     "@base-ui/react": "^1.7.0",
