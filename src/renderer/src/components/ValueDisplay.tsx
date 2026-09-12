@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils'
 import { AudioPlayer, type AudioPlayback } from './AudioPlayer'
 import { ChoiceBadge } from './ChoiceBadge'
 import { RatingStars } from './RatingStars'
-import { RecordBadge } from './RecordBadge'
+import { RelationBadges } from './RelationBadges'
 
 /** Read-only rendering of a record value, shared by table cells and cards. */
 export function ValueDisplay({
@@ -25,6 +25,7 @@ export function ValueDisplay({
   value,
   className,
   lineClamp = 1,
+  clipped = false,
   audioPlayback
 }: {
   field: Field
@@ -32,6 +33,9 @@ export function ValueDisplay({
   className?: string
   /** Number of text lines to wrap to before truncating; 1 keeps the classic single-line clip. */
   lineClamp?: number
+  /** Set by containers whose height is fixed and whose overflow is clipped —
+   *  a table row — so content that would spill onto another line stays put. */
+  clipped?: boolean
   /** Optional table-column playlist behavior; cards and editors remain standalone. */
   audioPlayback?: AudioPlayback
 }): React.JSX.Element | null {
@@ -62,11 +66,15 @@ export function ValueDisplay({
       const target = relationTable(field, tables)
       if (!target) return null
       return (
-        <span className={cn('flex flex-wrap items-center gap-x-1 gap-y-1.5', className)}>
-          {linkedRecords(field, value, tables).map((record) => (
-            <RecordBadge key={record.id} label={recordLabel(target, record)} />
-          ))}
-        </span>
+        <RelationBadges
+          records={linkedRecords(field, value, tables).map((record) => ({
+            id: record.id,
+            label: recordLabel(target, record)
+          }))}
+          lineClamp={lineClamp}
+          clipped={clipped}
+          className={className}
+        />
       )
     }
     case 'checkbox':

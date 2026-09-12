@@ -1182,26 +1182,33 @@ function TableCell({
       data-find-active={findState.active ? 'true' : undefined}
       className={cn(
         heightInfo.rowClass,
-        'border-b border-r p-0',
+        'relative border-b border-r p-0',
         findState.matched && 'bg-find-match-background',
         findState.active && 'ring-4 ring-inset ring-find-highlight'
       )}
     >
-      <CellContent
-        projectId={projectId}
-        field={field}
-        value={value}
-        onChange={setValue}
-        lineClamp={heightInfo.lineClamp}
-        audioPlayback={audioPlayback}
-        selected={selected}
-        editing={editing}
-        editSeed={editSeed}
-        onSelect={onSelect}
-        onEdit={onEdit}
-        onCommit={onCommit}
-        onCancel={onCancel}
-      />
+      {/* Out of flow, so no cell's content can push its row past `rowClass`.
+          The window is laid out from that height without measuring a row, so
+          one that grows puts every offset below it out by the difference —
+          which the browser's scroll anchoring then fights, and the rows over
+          the seam flicker for as long as you sit there. */}
+      <div className="absolute inset-0 overflow-hidden">
+        <CellContent
+          projectId={projectId}
+          field={field}
+          value={value}
+          onChange={setValue}
+          lineClamp={heightInfo.lineClamp}
+          audioPlayback={audioPlayback}
+          selected={selected}
+          editing={editing}
+          editSeed={editSeed}
+          onSelect={onSelect}
+          onEdit={onEdit}
+          onCommit={onCommit}
+          onCancel={onCancel}
+        />
+      </div>
     </td>
   )
 }
@@ -1342,6 +1349,7 @@ function CellContent({
             field={field}
             value={value}
             lineClamp={lineClamp}
+            clipped
             audioPlayback={audioPlayback}
           />
         </div>
