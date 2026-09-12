@@ -224,7 +224,7 @@ export type ChartAggregate = 'count' | 'sum' | 'average' | 'median' | 'min' | 'm
  *  aggregate per bucket. */
 export type ChartType = 'metric' | 'bar' | 'column' | 'line' | 'donut'
 
-/** Calendar bucket a date grouping field falls into. */
+/** Calendar period used to group dates or page categorical charts. */
 export type ChartDateGrain = 'day' | 'week' | 'month' | 'year'
 
 /** Bucket order along the axis. `category` is the grouping field's own order —
@@ -244,8 +244,12 @@ export interface ChartSpec {
   /** Field whose values bucket the records into categories. A `metric` has
    *  none — it aggregates every record the view shows into one number. */
   groupByFieldId?: string
-  /** Only when `groupByFieldId` names a date/timestamp field: the calendar
-   *  bucket its values fall into; unset buckets by month. */
+  /** Optional date/timestamp field that limits a categorical chart to one
+   *  calendar period at a time. This lets a chart stay grouped by category
+   *  while its previous/next controls move through days, weeks, or months. */
+  pageByFieldId?: string
+  /** Calendar period used by a date grouping or `pageByFieldId`; unset uses
+   *  months. */
   dateGrain?: ChartDateGrain
   aggregate: ChartAggregate
   /** The `number`/`rating` field the aggregate reads. Ignored by `count`. */
@@ -254,7 +258,8 @@ export interface ChartSpec {
    *  order, everything else sorts by value, largest first. */
   sort?: ChartSort
   /** Most buckets to plot; unset shows 8. A categorical grouping folds its
-   *  tail into one "Other" bucket, a chronological one keeps the most recent. */
+   *  tail into one "Other" bucket, a chronological grouping pages through
+   *  windows of this size. */
   limit?: number
   size?: ChartSize
   /** Applied after the dashboard filters; unset includes all dashboard records. */

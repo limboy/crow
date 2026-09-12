@@ -78,6 +78,19 @@ export function ChartFigure({
   )
   const selectedRecords = selection ? records.filter((record) => selectedIds.has(record.id)) : []
   const onBucketClick = (bucket: ChartBucket): void => setSelection({ key: bucket.key })
+  const footnote = (
+    <ChartFootnote
+      folded={data.folded}
+      trimmedBefore={data.trimmedBefore}
+      trimmedAfter={data.trimmedAfter}
+      shown={data.pageLabel ? 1 : data.buckets.length}
+      pageLabel={data.pageLabel}
+      dateGrain={spec.dateGrain ?? 'month'}
+      // Stepping from the page that was drawn, not the one asked for, so a
+      // click still moves after a filter has shortened the timeline.
+      onPage={(step) => setPage(Math.max(0, data.page + step))}
+    />
+  )
   const drillDown = (
     <Dialog open={selection !== null} onOpenChange={(open) => !open && setSelection(null)}>
       <DialogContent className="sm:max-w-lg">
@@ -141,7 +154,14 @@ export function ChartFigure({
   }
 
   if (data.buckets.length === 0) {
-    return <ChartNote>No records to chart yet.</ChartNote>
+    return data.pageLabel ? (
+      <div className="flex h-full flex-col gap-2">
+        <ChartNote>No records in this {spec.dateGrain ?? 'month'}.</ChartNote>
+        {footnote}
+      </div>
+    ) : (
+      <ChartNote>No records to chart yet.</ChartNote>
+    )
   }
 
   return (
@@ -175,16 +195,7 @@ export function ChartFigure({
         />
       )}
       {drillDown}
-      <ChartFootnote
-        folded={data.folded}
-        trimmedBefore={data.trimmedBefore}
-        trimmedAfter={data.trimmedAfter}
-        shown={data.buckets.length}
-        dateGrain={spec.dateGrain ?? 'month'}
-        // Stepping from the page that was drawn, not the one asked for, so a
-        // click still moves after a filter has shortened the timeline.
-        onPage={(step) => setPage(Math.max(0, data.page + step))}
-      />
+      {footnote}
     </div>
   )
 }
@@ -209,6 +220,7 @@ function ChartFootnote({
   trimmedBefore,
   trimmedAfter,
   shown,
+  pageLabel,
   dateGrain,
   onPage
 }: {
@@ -216,41 +228,47 @@ function ChartFootnote({
   trimmedBefore: number
   trimmedAfter: number
   shown: number
+  pageLabel?: string
   dateGrain: NonNullable<ChartSpec['dateGrain']>
   onPage: (step: number) => void
 }): React.JSX.Element | null {
   const total = trimmedBefore + shown + trimmedAfter
   if (folded === 0 && trimmedBefore === 0 && trimmedAfter === 0) return null
-  if (folded > 0) {
-    return (
-      <p className="text-[11px] text-muted-foreground">
-        {`${folded} smaller ${folded === 1 ? 'category' : 'categories'} folded into Other.`}
-      </p>
-    )
-  }
+  const periodName = shown === 1 ? dateGrain : `${dateGrain}s`
   return (
-    <div className="flex items-center justify-center gap-1 text-[11px] text-muted-foreground">
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        disabled={trimmedBefore === 0}
-        onClick={() => onPage(1)}
-        aria-label={`Show the previous ${shown} ${dateGrain}s`}
-      >
-        <ChevronLeft />
-      </Button>
-      <span className="tabular-nums">
-        {`${(trimmedBefore + 1).toLocaleString()}\u2013${(trimmedBefore + shown).toLocaleString()} of ${total.toLocaleString()} ${dateGrain}s`}
-      </span>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        disabled={trimmedAfter === 0}
-        onClick={() => onPage(-1)}
-        aria-label={`Show the next ${shown} ${dateGrain}s`}
-      >
-        <ChevronRight />
-      </Button>
+    <div className="flex flex-col items-center gap-1 text-[11px] text-muted-foreground">
+      {folded > 0 && (
+        <p>
+          {`${folded} smaller ${folded === 1 ? 'category' : 'categories'} folded into Other.`}
+        </p>
+      )}
+      {(trimmedBefore > 0 || trimmedAfter > 0) && (
+        <div className="flex items-center justify-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            disabled={trimmedBefore === 0}
+            onClick={() => onPage(1)}
+            aria-label={`Show the previous ${shown} ${periodName}`}
+          >
+            <ChevronLeft />
+          </Button>
+          <span className="tabular-nums">
+            {pageLabel
+              ? `${pageLabel} · ${(trimmedBefore + 1).toLocaleString()} of ${total.toLocaleString()}`
+              : `${(trimmedBefore + 1).toLocaleString()}\u2013${(trimmedBefore + shown).toLocaleString()} of ${total.toLocaleString()} ${periodName}`}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            disabled={trimmedAfter === 0}
+            onClick={() => onPage(-1)}
+            aria-label={`Show the next ${shown} ${periodName}`}
+          >
+            <ChevronRight />
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

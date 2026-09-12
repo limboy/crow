@@ -635,6 +635,7 @@ export function deleteField(table: Table, fieldId: string): Table {
               ...chart,
               filters: chart.filters?.filter((rule) => rule.fieldId !== fieldId),
               groupByFieldId: chart.groupByFieldId === fieldId ? undefined : chart.groupByFieldId,
+              pageByFieldId: chart.pageByFieldId === fieldId ? undefined : chart.pageByFieldId,
               valueFieldId: chart.valueFieldId === fieldId ? undefined : chart.valueFieldId
             }))
           }

@@ -91,7 +91,12 @@ test('relation buckets carry source record IDs, not linked record IDs', () => {
 })
 
 test('saved chart filters survive migration and duplication, and field deletion cleans them', () => {
-  const chart = { ...spec, filters: [rule('value', 'gt', 10)], filterMatch: 'any' }
+  const chart = {
+    ...spec,
+    filters: [rule('value', 'gt', 10)],
+    filterMatch: 'any',
+    pageByFieldId: 'date'
+  }
   const table = {
     id: 'table',
     name: 'Table',
@@ -116,12 +121,17 @@ test('saved chart filters survive migration and duplication, and field deletion 
     .tables[0]
   assert.deepEqual(migrated.views[0].config.charts[0].filters, chart.filters)
   assert.equal(migrated.views[0].config.charts[0].filterMatch, 'any')
+  assert.equal(migrated.views[0].config.charts[0].pageByFieldId, 'date')
   const duplicated = duplicateChart(migrated, 'view', 'chart')
   assert.deepEqual(duplicated.views[0].config.charts[1].filters, chart.filters)
   assert.notEqual(duplicated.views[0].config.charts[1].id, chart.id)
   assert.deepEqual(
     deleteField(duplicated, 'value').views[0].config.charts.map((c) => c.filters),
     [[], []]
+  )
+  assert.deepEqual(
+    deleteField(duplicated, 'date').views[0].config.charts.map((c) => c.pageByFieldId),
+    [undefined, undefined]
   )
   table.views[0].config.charts = [spec]
   const legacy = migrateProject({ id: 'project', tables: [table] }).tables[0].views[0].config
@@ -152,4 +162,111 @@ test('a trimmed timeline pages back through the run, newest window first', () =>
   const oldest = chartData(timeline, fields, rows, [], 9)
   assert.deepEqual(oldest.buckets.map((b) => b.key), ['2026-01'])
   assert.deepEqual([oldest.trimmedBefore, oldest.trimmedAfter, oldest.page], [0, 4, 2])
+})
+
+test('donut and line charts paginate under different days with distinct slice colors', () => {
+  const rows = ['01', '02', '03', '04', '05'].map((day, i) =>
+    record(`r${i}`, 1, `2026-09-${day}`)
+  )
+  const donutSpec = {
+    ...spec,
+    type: 'donut',
+    aggregate: 'count',
+    groupByFieldId: 'date',
+    dateGrain: 'day',
+    limit: 3
+  }
+  const donutData = chartData(donutSpec, fields, rows)
+  assert.deepEqual(donutData.buckets.map((b) => b.key), ['2026-09-03', '2026-09-04', '2026-09-05'])
+  assert.deepEqual([donutData.trimmedBefore, donutData.trimmedAfter, donutData.page], [2, 0, 0])
+  // Each chronological slice must have a distinct colorIndex
+  assert.deepEqual(donutData.buckets.map((b) => b.colorIndex), [0, 1, 2])
+  const olderDonutData = chartData(donutSpec, fields, rows, [], 1)
+  assert.deepEqual(olderDonutData.buckets.map((b) => b.key), ['2026-09-01', '2026-09-02'])
+  assert.deepEqual(
+    [olderDonutData.trimmedBefore, olderDonutData.trimmedAfter, olderDonutData.page],
+    [0, 3, 1]
+  )
+
+  const lineSpec = {
+    ...spec,
+    type: 'line',
+    aggregate: 'count',
+    groupByFieldId: 'date',
+    dateGrain: 'day',
+    limit: 3
+  }
+  const lineData = chartData(lineSpec, fields, rows)
+  assert.deepEqual(lineData.buckets.map((b) => b.key), ['2026-09-03', '2026-09-04', '2026-09-05'])
+  assert.deepEqual([lineData.trimmedBefore, lineData.trimmedAfter, lineData.page], [2, 0, 0])
+  const olderLineData = chartData(lineSpec, fields, rows, [], 1)
+  assert.deepEqual(olderLineData.buckets.map((b) => b.key), ['2026-09-01', '2026-09-02'])
+  assert.deepEqual(
+    [olderLineData.trimmedBefore, olderLineData.trimmedAfter, olderLineData.page],
+    [0, 3, 1]
+  )
+})
+
+test('categorical donut and line charts page through a separate date field week by week', () => {
+  const rows = [
+    record('older-ten', 10, '2026-09-07'),
+    record('older-twenty', 20, '2026-09-08'),
+    record('latest-thirty-a', 30, '2026-09-14'),
+    record('latest-thirty-b', 30, '2026-09-15'),
+    record('latest-forty', 40, '2026-09-16')
+  ]
+  const pagedCategories = {
+    ...spec,
+    aggregate: 'count',
+    groupByFieldId: 'value',
+    pageByFieldId: 'date',
+    dateGrain: 'week',
+    limit: 6
+  }
+
+  const latestDonut = chartData({ ...pagedCategories, type: 'donut' }, fields, rows)
+  assert.equal(latestDonut.pageLabel, 'Sep 14–20, 2026')
+  assert.deepEqual(
+    latestDonut.buckets.map((bucket) => [bucket.label, bucket.value]),
+    [
+      ['30', 2],
+      ['40', 1]
+    ]
+  )
+  assert.deepEqual([latestDonut.trimmedBefore, latestDonut.trimmedAfter], [1, 0])
+
+  const olderDonut = chartData({ ...pagedCategories, type: 'donut' }, fields, rows, [], 1)
+  assert.equal(olderDonut.pageLabel, 'Sep 7–13, 2026')
+  assert.deepEqual(
+    olderDonut.buckets.map((bucket) => [bucket.label, bucket.value]),
+    [
+      ['10', 1],
+      ['20', 1]
+    ]
+  )
+  assert.deepEqual([olderDonut.trimmedBefore, olderDonut.trimmedAfter], [0, 1])
+
+  const olderLine = chartData({ ...pagedCategories, type: 'line' }, fields, rows, [], 1)
+  assert.equal(olderLine.pageLabel, 'Sep 7–13, 2026')
+  assert.deepEqual(
+    olderLine.buckets.map((bucket) => [bucket.label, bucket.value]),
+    [
+      ['10', 1],
+      ['20', 1]
+    ]
+  )
+
+  const emptyMiddleWeek = chartData(
+    { ...pagedCategories, type: 'donut' },
+    fields,
+    [record('first', 10, '2026-09-07'), record('last', 20, '2026-09-21')],
+    [],
+    1
+  )
+  assert.equal(emptyMiddleWeek.pageLabel, 'Sep 14–20, 2026')
+  assert.deepEqual(emptyMiddleWeek.buckets, [])
+  assert.deepEqual(
+    [emptyMiddleWeek.trimmedBefore, emptyMiddleWeek.trimmedAfter, emptyMiddleWeek.page],
+    [1, 1, 1]
+  )
 })

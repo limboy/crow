@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue
@@ -72,9 +73,12 @@ export function ChartDialog({
 
   const groupFields = fields.filter(canGroupBy)
   const valueFields = fields.filter(canAggregate)
+  const dateFields = fields.filter(isDateGroupField)
   const groupField = fields.find((f) => f.id === draft.groupByFieldId)
+  const pageField = dateFields.find((f) => f.id === draft.pageByFieldId)
   const grouped = draft.type !== 'metric'
   const chronological = isDateGroupField(groupField)
+  const pagingByDate = grouped && !chronological && pageField !== undefined
 
   const handleSubmit = (): void => {
     onSubmit({
@@ -83,8 +87,10 @@ export function ChartDialog({
       // Settings that no longer apply are dropped rather than carried along
       // invisibly, so what's on disk matches what the chart draws.
       groupByFieldId: grouped ? draft.groupByFieldId : undefined,
+      pageByFieldId: pagingByDate ? pageField.id : undefined,
       valueFieldId: draft.aggregate === 'count' ? undefined : draft.valueFieldId,
-      dateGrain: grouped && chronological ? (draft.dateGrain ?? 'month') : undefined,
+      dateGrain:
+        grouped && (chronological || pagingByDate) ? (draft.dateGrain ?? 'month') : undefined,
       sort: grouped && !chronological ? draft.sort : undefined,
       limit: grouped ? (draft.limit ?? DEFAULT_CHART_LIMIT) : undefined
     })
@@ -185,9 +191,20 @@ export function ChartDialog({
             />
           )}
 
-          {grouped && chronological && (
+          {grouped && !chronological && dateFields.length > 0 && (
+            <FieldSelect
+              label="Page by"
+              fields={dateFields}
+              value={draft.pageByFieldId}
+              placeholder="All time"
+              noneLabel="All time"
+              onChange={(pageByFieldId) => patch({ pageByFieldId })}
+            />
+          )}
+
+          {grouped && (chronological || pagingByDate) && (
             <div className="flex flex-col gap-1.5">
-              <Label>Bucket by</Label>
+              <Label>{chronological ? 'Bucket by' : 'One page per'}</Label>
               <Select
                 items={Object.fromEntries(
                   CHART_DATE_GRAINS.map((info) => [info.value, info.label])
@@ -311,12 +328,14 @@ function FieldSelect({
   fields,
   value,
   placeholder,
+  noneLabel,
   onChange
 }: {
   label: string
   fields: Field[]
   value: string | undefined
   placeholder: string
+  noneLabel?: string
   onChange: (fieldId: string | undefined) => void
 }): React.JSX.Element {
   const option = (field: Field): React.JSX.Element => {
@@ -329,23 +348,37 @@ function FieldSelect({
     )
   }
 
+  const noFieldValue = '__no_field__'
+  const items = Object.fromEntries(fields.map((field) => [field.id, option(field)]))
+  if (noneLabel) items[noFieldValue] = <span>{noneLabel}</span>
+  const selectedValue = fields.some((field) => field.id === value)
+    ? value
+    : noneLabel
+      ? noFieldValue
+      : NO_FIELD
+
   return (
     <div className="flex flex-col gap-1.5">
       <Label>{label}</Label>
       <Select
-        items={Object.fromEntries(fields.map((field) => [field.id, option(field)]))}
-        value={fields.some((field) => field.id === value) ? value : NO_FIELD}
-        onValueChange={(v) => onChange(v === NO_FIELD ? undefined : (v as string))}
+        items={items}
+        value={selectedValue}
+        onValueChange={(v) =>
+          onChange(v === NO_FIELD || v === noFieldValue ? undefined : (v as string))
+        }
       >
         <SelectTrigger className="w-full">
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>
-          {fields.map((field) => (
-            <SelectItem key={field.id} value={field.id}>
-              {option(field)}
-            </SelectItem>
-          ))}
+          <SelectGroup>
+            {noneLabel && <SelectItem value={noFieldValue}>{noneLabel}</SelectItem>}
+            {fields.map((field) => (
+              <SelectItem key={field.id} value={field.id}>
+                {option(field)}
+              </SelectItem>
+            ))}
+          </SelectGroup>
         </SelectContent>
       </Select>
     </div>

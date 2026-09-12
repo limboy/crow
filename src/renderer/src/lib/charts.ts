@@ -205,6 +205,10 @@ export interface ChartData {
   /** The page actually drawn, clamped into range — the caller's own page can
    *  point past the end once a filter shortens the timeline. */
   page: number
+  /** Human-readable calendar period when a categorical chart is being paged
+   *  by a separate date field. Undefined for ordinary category and timeline
+   *  charts. */
+  pageLabel?: string
   /** Why there's nothing to draw, when the chart is configured but unplottable. */
   note?: string
 }
@@ -268,6 +272,23 @@ function grainNext(grain: ChartDateGrain, key: string): string {
     case 'year':
       return formatDate(addYears(new Date(`${key}-01-01T00:00:00`), 1), 'yyyy')
   }
+}
+
+/** A complete calendar-period label for a chart page. Axis labels stay short,
+ *  but a page navigator needs enough context to identify the exact period. */
+function grainPageLabel(grain: ChartDateGrain, key: string): string {
+  if (grain === 'year') return key
+  if (grain === 'month') return formatDate(new Date(`${key}-01T00:00:00`), 'MMMM yyyy')
+  const start = new Date(`${key}T00:00:00`)
+  if (grain === 'day') return formatDate(start, 'MMM d, yyyy')
+  const end = addDays(start, 6)
+  if (start.getFullYear() !== end.getFullYear()) {
+    return `${formatDate(start, 'MMM d, yyyy')}–${formatDate(end, 'MMM d, yyyy')}`
+  }
+  if (start.getMonth() !== end.getMonth()) {
+    return `${formatDate(start, 'MMM d')}–${formatDate(end, 'MMM d, yyyy')}`
+  }
+  return `${formatDate(start, 'MMM d')}–${formatDate(end, 'd, yyyy')}`
 }
 
 /**
@@ -441,8 +462,9 @@ export function chartData(
   fields: Field[],
   records: RecordRow[],
   tables: Table[] = [],
-  /** Which window of a timeline to draw: 0 is the most recent one, and each
-   *  step goes a further window back. Ignored by every other grouping. */
+  /** Which date window to draw: 0 is the most recent one, and each step goes
+   *  further back. Used by date groupings and categorical charts with a
+   *  separate `pageByFieldId`. */
   page = 0
 ): ChartData {
   const groupField = fields.find((f) => f.id === spec.groupByFieldId)
@@ -450,14 +472,41 @@ export function chartData(
   if (chartIssue(spec, fields)) return EMPTY_DATA
 
   records = applyFilters(records, spec.filters ?? [], fields, spec.filterMatch ?? 'all')
+  const grain = spec.dateGrain ?? 'month'
+  const chronological = isDateGroupField(groupField)
+  const requestedPageField = fields.find((f) => f.id === spec.pageByFieldId)
+  // Date grouping already owns the x-axis paging behavior. `pageByFieldId` is
+  // the independent time dimension for charts whose visible buckets remain
+  // categories such as Minutes or Status.
+  const pageField =
+    !chronological && isDateGroupField(requestedPageField) ? requestedPageField : undefined
+  let trimmedBefore = 0
+  let trimmedAfter = 0
+  let paged = 0
+  let pageLabel: string | undefined
+
+  if (pageField) {
+    const periods = dateBuckets(records, pageField, grain)
+    const pageCount = Math.max(1, periods.length)
+    paged = Math.min(Math.max(Math.trunc(page), 0), pageCount - 1)
+    const periodIndex = periods.length - paged - 1
+    const period = periods[periodIndex]
+    if (period) {
+      records = period.records
+      trimmedBefore = periodIndex
+      trimmedAfter = periods.length - periodIndex - 1
+      pageLabel = grainPageLabel(grain, period.key)
+    } else {
+      records = []
+    }
+  }
+
   const recordIds = records.map((record) => record.id)
   const total = aggregateRecords(records, spec.aggregate, valueField)
   if (spec.type === 'metric' || !groupField) {
     return { ...EMPTY_DATA, total: total ?? 0, recordCount: records.length, recordIds }
   }
 
-  const grain = spec.dateGrain ?? 'month'
-  const chronological = isDateGroupField(groupField)
   // The bucket's own records ride along until folding is done, so an "Other"
   // average is taken over records rather than over averages.
   const aggregated = rawBuckets(records, groupField, grain, tables).flatMap((bucket) => {
@@ -471,9 +520,6 @@ export function chartData(
   const limit = effectiveLimit(spec)
   let plotted = aggregated
   let folded = 0
-  let trimmedBefore = 0
-  let trimmedAfter = 0
-  let paged = 0
 
   if (chronological) {
     // A timeline can't fold its tail into "Other" without lying about when
@@ -528,10 +574,10 @@ export function chartData(
   }
 
   const buckets: ChartBucket[] = plotted.map(
-    ({ key, label, colorIndex, value, count, records }) => ({
+    ({ key, label, colorIndex, value, count, records }, index) => ({
       key,
       label,
-      colorIndex,
+      colorIndex: chronological ? index : colorIndex,
       value,
       count,
       recordIds: [...new Set(records.map((record) => record.id))]
@@ -554,7 +600,8 @@ export function chartData(
     folded,
     trimmedBefore,
     trimmedAfter,
-    page: paged
+    page: paged,
+    pageLabel
   }
 }
 
