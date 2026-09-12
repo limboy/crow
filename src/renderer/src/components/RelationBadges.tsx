@@ -10,20 +10,19 @@ export type LinkedRecordLabel = { id: string; label: string }
  *  card without turning it into a list of everything. */
 const VISIBLE_BY_LINE_CLAMP: Record<number, number> = { 1: 3, 2: 6, 4: 12, 9: 24 }
 
-/** The same, for a row that clips at `lineClamp` lines. A label can be wide
- *  enough to take a line to itself, so the only cap that keeps the button on
- *  screen in the worst case is one that leaves a line free for it. */
-function clippedLimit(lineClamp: number): number {
-  // One line is the exception: there the button sits inline and holds its
-  // width, so extra badges narrow rather than push it off the end.
-  return lineClamp === 1 ? 3 : lineClamp - 1
-}
+/** How many lines a clipped row of each tier has room for — fewer than
+ *  `lineClamp`, because a badge line is taller than the line of text that
+ *  number counts. A badge is 22px (a 16px line box, 4px of padding, 2px of
+ *  border) and they stack 4px apart, inside a content box of the tier height
+ *  less its 1px border and the cell's vertical padding: short 23px fits 1,
+ *  medium 55px fits 2, tall 103px fits 4, extra tall 199px fits 7. */
+const LINES_BY_LINE_CLAMP: Record<number, number> = { 1: 1, 2: 2, 4: 4, 9: 7 }
 
 /**
- * The linked records of a relation cell, capped at what the row can show.
- * Everything past the cap moves into a "+N more" button that opens the full
- * list — without it the overflow is simply clipped, and a cell with twenty
- * links looks the same as one with three.
+ * The linked records of a relation cell, one per line, capped at the lines the
+ * row has. Everything past the cap moves into a "+N more" button that opens
+ * the full list — without it the overflow is simply clipped, and a cell with
+ * twenty links looks the same as one with three.
  */
 export function RelationBadges({
   records,
@@ -34,16 +33,19 @@ export function RelationBadges({
   records: LinkedRecordLabel[]
   lineClamp?: number
   /** Whether the container is a fixed-height row that clips its overflow, as
-   *  a table cell is. A second line has nowhere to go in a one-line row, so
-   *  the button stays on the first one there. */
+   *  a table cell is — which is what makes it worth counting the lines the
+   *  badges are allowed to take. */
   clipped?: boolean
   className?: string
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
-  const singleLine = clipped && lineClamp === 1
-  const limit = clipped
-    ? clippedLimit(lineClamp)
-    : (VISIBLE_BY_LINE_CLAMP[lineClamp] ?? lineClamp * 3)
+  const lines = LINES_BY_LINE_CLAMP[lineClamp] ?? lineClamp
+  // A single-line row can't stack anything: the button shares the line with
+  // the badges there, and holds its width while they give theirs up.
+  const singleLine = clipped && lines < 2
+  // Stacked, every record costs exactly one line — so the cap is just the
+  // lines available, less the one the button takes.
+  const limit = singleLine ? 3 : clipped ? lines - 1 : (VISIBLE_BY_LINE_CLAMP[lineClamp] ?? 3)
   // Collapsing a single record into "+1 more" trades a label for a button of
   // the same width, so only cap once at least two would be hidden.
   const visible = records.length > limit + 1 ? records.slice(0, limit) : records
@@ -52,14 +54,12 @@ export function RelationBadges({
   return (
     <span
       className={cn(
-        'flex items-center gap-x-1 gap-y-1.5',
-        singleLine ? 'flex-nowrap' : 'flex-wrap',
+        'flex gap-1',
+        singleLine ? 'items-center' : 'flex-col items-start',
         className
       )}
     >
       {visible.map((record) => (
-        // On one line the badges give up width to the button rather than
-        // pushing it off the edge, where it was the part you couldn't read.
         <RecordBadge
           key={record.id}
           label={record.label}
@@ -67,35 +67,34 @@ export function RelationBadges({
         />
       ))}
       {hiddenCount > 0 && (
-        // Where there's room for another line the button takes one of its own,
-        // rather than trailing a badge that the cell is clipping on the right.
-        <span className={cn('flex', singleLine ? 'shrink-0' : 'basis-full')}>
-          <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger
-              // The cell underneath selects on click and opens its editor on
-              // double-click; neither should fire for a press on the button.
-              onClick={(e) => e.stopPropagation()}
-              onDoubleClick={(e) => e.stopPropagation()}
-              render={
-                <span
-                  role="button"
-                  tabIndex={0}
-                  title={`Show all ${records.length} linked records`}
-                  className="inline-flex cursor-pointer items-center rounded-md border border-dashed bg-muted/60 px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-                >
-                  +{hiddenCount} more
-                </span>
-              }
-            />
-            <PopoverContent align="start" className="max-h-72 w-64 gap-2 overflow-y-auto p-2">
-              <span className="flex flex-wrap items-center gap-x-1 gap-y-1.5">
-                {records.map((record) => (
-                  <RecordBadge key={record.id} label={record.label} />
-                ))}
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger
+            // The cell underneath selects on click and opens its editor on
+            // double-click; neither should fire for a press on the button.
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            render={
+              <span
+                role="button"
+                tabIndex={0}
+                title={`Show all ${records.length} linked records`}
+                className={cn(
+                  'inline-flex cursor-pointer items-center rounded-md border border-dashed bg-muted/60 px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground',
+                  singleLine && 'shrink-0'
+                )}
+              >
+                +{hiddenCount} more
               </span>
-            </PopoverContent>
-          </Popover>
-        </span>
+            }
+          />
+          <PopoverContent align="start" className="max-h-72 w-64 gap-2 overflow-y-auto p-2">
+            <span className="flex flex-col items-start gap-1">
+              {records.map((record) => (
+                <RecordBadge key={record.id} label={record.label} />
+              ))}
+            </span>
+          </PopoverContent>
+        </Popover>
       )}
     </span>
   )

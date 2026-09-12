@@ -1328,6 +1328,10 @@ function CellContent({
             'flex h-full w-full cursor-default overflow-hidden px-2 text-left',
             wrap ? 'flex-wrap content-start items-start gap-1 py-1.5' : 'items-center',
             !wrap && hasMultipleRelationRecords && 'py-1.5',
+            // Linked records stack one per line, and the 4px this gives back is
+            // the difference between a tall row fitting three of them plus the
+            // "+N more" button and only fitting two.
+            wrap && field.type === 'relation' && 'py-1',
             selected && !editing && 'ring-2 ring-inset ring-ring',
             isFileField && activeFileDrop.isOver && 'bg-accent ring-2 ring-inset ring-primary',
             // A dropped file only reaches the cell once it's stored — and a
