@@ -14,11 +14,11 @@ version=$(node -p "require('$root/package.json').version")
 build() {
   appex="$root/out/quicklook/$1.appex"
   rm -rf "$appex"
-  mkdir -p "$appex/Contents/MacOS" "$appex/Contents/Resources"
+  mkdir -p "$appex/Contents/MacOS"
   xcrun swiftc -O -parse-as-library -module-name "$1" \
     -target "$(uname -m)-apple-macos12.0" \
     -Xlinker -e -Xlinker _NSExtensionMain \
-    CrowDocument.swift "$2"/*.swift -o "$appex/Contents/MacOS/$1"
+    CrowDocument.swift CrowPreview.swift "$2"/*.swift -o "$appex/Contents/MacOS/$1"
   cp "$2/Info.plist" "$appex/Contents/Info.plist"
   plutil -replace CFBundleShortVersionString -string "$version" "$appex/Contents/Info.plist"
   plutil -replace CFBundleVersion -string "$version" "$appex/Contents/Info.plist"
@@ -26,9 +26,6 @@ build() {
 
 build CrowQuickLook Preview
 build CrowThumbnail Thumbnail
-# The thumbnail card's header artwork.
-sips -Z 512 "$root/build/icon.png" --out "$root/out/quicklook/CrowThumbnail.appex/Contents/Resources/artwork.png" >/dev/null
-
 for appex in "$root"/out/quicklook/*.appex; do
   codesign --force --sign - --entitlements QuickLook.entitlements "$appex"
 done
