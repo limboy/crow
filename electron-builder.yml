@@ -51,11 +51,13 @@ mac:
       arch: [arm64]
   category: public.app-category.productivity
   icon: build/icon.icns
-  # Quick Look preview for .crow documents (macos/quicklook), built by
-  # `npm run build:quicklook`. macos/sign.cjs signs it before the app.
+  # Quick Look preview and thumbnail for .crow documents (macos/quicklook),
+  # built by `npm run build:quicklook`. macos/sign.cjs signs them before the app.
   extraFiles:
     - from: out/quicklook/CrowQuickLook.appex
       to: PlugIns/CrowQuickLook.appex
+    - from: out/quicklook/CrowThumbnail.appex
+      to: PlugIns/CrowThumbnail.appex
   sign: macos/sign.cjs
   extendInfo:
     UTExportedTypeDeclarations:

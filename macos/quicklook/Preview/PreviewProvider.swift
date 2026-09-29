@@ -1,6 +1,5 @@
-// Quick Look preview for .crow documents (space bar in Finder, and Finder's
-// preview pane). Reads the package's data.json — see docs/crow-format.md — and
-// renders an HTML summary: the document's dates and size, then each table's
+// Quick Look preview for .crow documents (space bar in Finder). Renders an
+// HTML summary: the document's dates and size, then each table's
 // fields and first few records.
 import Foundation
 import QuickLookUI
@@ -23,60 +22,28 @@ struct CrowPreview {
   let url: URL
 
   func html() throws -> String {
-    let title = url.deletingPathExtension().lastPathComponent
-    var isDir: ObjCBool = false
-    FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
-    guard isDir.boolValue else {
-      // A pre-3.0 single-file document; the app converts it on open.
-      return page(title: title, body: "<p class=note>This is an older single-file Crow document. Open it in Crow to convert it.</p>")
+    let doc = try CrowDocument(url: url)
+    guard let project = doc.project else {
+      return page(title: doc.title, body: "<p class=note>This is an older single-file Crow document. Open it in Crow to convert it.</p>")
     }
-
-    let data = try Data(contentsOf: url.appendingPathComponent("data.json"))
-    guard let project = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-      throw CocoaError(.fileReadCorruptFile)
-    }
-    let tables = Self.tables(of: project, name: title)
-    let media = mediaStats()
+    let tables = doc.tables
 
     var meta: [(String, String)] = []
-    let recordCount = tables.reduce(0) { $0 + (($1["records"] as? [Any])?.count ?? 0) }
     meta.append(("Tables", "\(tables.count)"))
-    meta.append(("Records", recordCount.formatted()))
-    for (label, count) in media.counts where count > 0 { meta.append((label, count.formatted())) }
-    meta.append(("Size", ByteCountFormatter.string(fromByteCount: media.bytes, countStyle: .file)))
+    meta.append(("Records", doc.recordCount.formatted()))
+    for (label, count) in doc.mediaCounts() where count > 0 { meta.append((label, count.formatted())) }
+    meta.append(("Size", ByteCountFormatter.string(fromByteCount: doc.totalBytes(), countStyle: .file)))
     if let d = Self.date(project["createdAt"]) { meta.append(("Created", d)) }
     if let d = Self.date(project["updatedAt"]) { meta.append(("Modified", d)) }
 
     var body = "<dl class=meta>"
     for (k, v) in meta { body += "<div><dt>\(esc(k))</dt><dd>\(esc(v))</dd></div>" }
     body += "</dl>"
-    for table in tables { body += tableSection(table, all: tables) }
-    return page(title: title, body: body)
+    for table in tables { body += tableSection(table) }
+    return page(title: doc.title, body: body)
   }
 
-  // Current documents have `tables`; older ones put one table's fields,
-  // records and views directly on the project.
-  static func tables(of project: [String: Any], name: String) -> [[String: Any]] {
-    if let tables = project["tables"] as? [[String: Any]] { return tables }
-    return [["name": name, "fields": project["fields"] ?? [], "records": project["records"] ?? []]]
-  }
-
-  func mediaStats() -> (counts: [(String, Int)], bytes: Int64) {
-    let fm = FileManager.default
-    var bytes: Int64 = 0
-    if let e = fm.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) {
-      for case let f as URL in e {
-        bytes += Int64((try? f.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
-      }
-    }
-    let counts = [("Images", "images"), ("Audio", "audio"), ("Videos", "video"), ("Attachments", "attachments")].map {
-      ($0.0, (try? fm.contentsOfDirectory(atPath: url.appendingPathComponent($0.1).path))?
-        .filter { !$0.hasPrefix(".") }.count ?? 0)
-    }
-    return (counts, bytes)
-  }
-
-  func tableSection(_ table: [String: Any], all: [[String: Any]]) -> String {
+  func tableSection(_ table: [String: Any]) -> String {
     let fields = (table["fields"] as? [[String: Any]]) ?? []
     let records = (table["records"] as? [[String: Any]]) ?? []
     let name = table["name"] as? String ?? "Untitled"
