@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react'
-import { ThemeToggle } from '@/components/ThemeToggle'
 import { UpdateButton } from '@/components/UpdateButton'
 import { isMac } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -7,7 +6,7 @@ import { cn } from '@/lib/utils'
 /**
  * Shared top bar for the routed pages. It doubles as the window's title bar,
  * so on macOS it leaves room for the traffic lights, and it ends with the
- * app-wide controls: the update button (when one is ready) and the theme toggle.
+ * app-wide controls: the update button (when one is ready).
  */
 export function PageHeader({
   children,
@@ -27,7 +26,6 @@ export function PageHeader({
       {children}
       <div className="ml-auto flex shrink-0 items-center gap-1">
         <UpdateButton />
-        <ThemeToggle />
       </div>
     </header>
   )

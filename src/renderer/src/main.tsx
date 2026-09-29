@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { HashRouter } from 'react-router-dom'
 import App from './App'
 import './assets/main.css'
-// Side effect: applies the persisted (or system-default) theme to <html>
+// Side effect: applies the system theme to <html>
 // before the app renders, so the correct theme is present on first paint.
 import './lib/theme'
 
