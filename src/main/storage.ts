@@ -1,188 +1,168 @@
 import { promises as fs } from 'fs'
 import { join } from 'path'
-import { newProject } from '@shared/defaults'
-import { migrateProject, projectRecordCount } from '@shared/migrate'
-import type { LegacyProject, Project, ProjectMeta } from '@shared/types'
-import { getDataDir } from './config'
+import { migrateProject } from '@shared/migrate'
+import type { LegacyProject, Project } from '@shared/types'
 
 export const SAFE_ID = /^[a-zA-Z0-9-]+$/
 
 export const DATA_FILE = 'data.json'
-const PROJECT_ORDER_FILE = 'order.json'
 
-export const projectsRootDir = (): string => join(getDataDir(), 'projects')
-
-/** Each project lives in its own folder: `<dataDir>/projects/<id>/data.json`,
- * with any images/audio it owns alongside it (`.../<id>/images/…`), so a
- * project can be copied, backed up, or deleted as a single self-contained
- * directory. */
-export function projectDir(id: string): string {
-  if (!SAFE_ID.test(id)) throw new Error(`Invalid project id: ${id}`)
-  return join(projectsRootDir(), id)
+/** The media folders inside a document, and the url scheme each one's files
+ *  are referenced by from inside the project. */
+export const MEDIA_FOLDERS: Record<string, string> = {
+  images: 'app-image',
+  audio: 'app-audio',
+  video: 'app-video',
+  attachments: 'app-attachment'
 }
-
-function projectFile(id: string): string {
-  return join(projectDir(id), DATA_FILE)
-}
-
-
-async function readProjectOrder(): Promise<string[] | null> {
-  try {
-    const parsed: unknown = JSON.parse(
-      await fs.readFile(join(projectsRootDir(), PROJECT_ORDER_FILE), 'utf-8')
-    )
-    if (!Array.isArray(parsed)) return null
-    const seen = new Set<string>()
-    return parsed.filter((id): id is string => {
-      if (typeof id !== 'string' || !SAFE_ID.test(id) || seen.has(id)) return false
-      seen.add(id)
-      return true
-    })
-  } catch {
-    return null
-  }
-}
-
-// Timestamps of writes made by this process, so the directory watcher can
-// tell the app's own saves apart from external ones (e.g. the agent CLI).
-const selfWrites = new Map<string, number>()
-
-export function wasRecentSelfWrite(filename: string): boolean {
-  const at = selfWrites.get(filename)
-  return at !== undefined && Date.now() - at < 1000
-}
-
-export async function ensureProjectsRootDir(): Promise<void> {
-  await fs.mkdir(projectsRootDir(), { recursive: true })
-}
-
-export async function listProjectIds(): Promise<string[]> {
-  await ensureProjectsRootDir()
-  const entries = await fs.readdir(projectsRootDir(), { withFileTypes: true })
-  return entries.filter((e) => e.isDirectory() && SAFE_ID.test(e.name)).map((e) => e.name)
-}
-
-export async function listProjects(): Promise<ProjectMeta[]> {
-  const ids = await listProjectIds()
-  const metas: ProjectMeta[] = []
-  for (const id of ids) {
-    try {
-      const raw = await fs.readFile(projectFile(id), 'utf-8')
-      const p = migrateProject(JSON.parse(raw) as Project | LegacyProject)
-      metas.push({
-        id: p.id,
-        name: p.name,
-        icon: p.icon,
-        recordCount: projectRecordCount(p),
-        tableCount: p.tables.length,
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt
-      })
-    } catch {
-      // skip unreadable files rather than failing the whole list
-    }
-  }
-
-  metas.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-  const order = await readProjectOrder()
-  if (!order) return metas
-
-  const byId = new Map(metas.map((project) => [project.id, project]))
-  const ordered = order.flatMap((id) => {
-    const project = byId.get(id)
-    if (!project) return []
-    byId.delete(id)
-    return [project]
-  })
-  return ordered.concat([...byId.values()])
-}
-
-export async function saveProjectOrder(ids: string[]): Promise<void> {
-  if (new Set(ids).size !== ids.length || ids.some((id) => !SAFE_ID.test(id))) {
-    throw new Error('Invalid project order')
-  }
-
-  const existing = new Set(await listProjectIds())
-  const order = ids.filter((id) => existing.has(id))
-  const target = join(projectsRootDir(), PROJECT_ORDER_FILE)
-  const tmp = `${target}.tmp`
-  await fs.writeFile(tmp, JSON.stringify(order, null, 2), 'utf-8')
-  await fs.rename(tmp, target)
-}
-
-/** Projects are migrated on the way out rather than rewritten in place, so an
- *  older file is only upgraded on disk once the user actually edits it. */
-export async function getProject(id: string): Promise<Project> {
-  const raw = await fs.readFile(projectFile(id), 'utf-8')
-  return migrateProject(JSON.parse(raw) as Project | LegacyProject)
-}
-
-/** How long an unreferenced attachment is kept before it's swept. Anything
- *  younger is left alone, which covers the two cases where "unreferenced" is
- *  only momentarily true: an undo of the removal that put it back, and a file
- *  the CLI has written but whose own save hasn't landed yet. */
-const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000
 
 /**
- * Deletes attachment files the saved project no longer points at.
+ * A `.crow` document is a directory — a package, which Finder shows as a
+ * single file:
  *
- * Images and audio are deliberately left alone — they're bounded in practice
- * and the format doc promises an export never drops one. An attachment can be
- * any file at all, so a store that only ever grows isn't tenable: removing a
- * 2GB file from a cell has to eventually give the 2GB back.
+ *   Name.crow/
+ *   ├── data.json      the project
+ *   ├── images/ audio/ video/ attachments/
+ *
+ * Everything reads and writes inside it directly. Media is referenced as
+ * `app-image:///<projectId>/<name>` (etc.), so the protocol handlers need to
+ * know which directory each open project id lives in; that's this map.
  */
-async function sweepAttachments(id: string, serialized: string): Promise<void> {
-  const dir = join(projectDir(id), 'attachments')
-  let names: string[]
+const openDirs = new Map<string, string>()
+
+export function registerProjectDir(id: string, dir: string): void {
+  openDirs.set(id, dir)
+}
+
+export function unregisterProjectDir(id: string): void {
+  openDirs.delete(id)
+  savedMtimes.delete(id)
+}
+
+export function isProjectOpen(id: string): boolean {
+  return openDirs.has(id)
+}
+
+/** The directory of an open document. Throws for any id that isn't one, so a
+ *  renderer can only ever read or write the documents actually open. */
+export function projectDir(id: string): string {
+  const dir = openDirs.get(id)
+  if (!dir) throw new Error(`No open document has id ${id}`)
+  return dir
+}
+
+/** Reads a document's project, migrated to the current shape. Throws if the
+ *  directory doesn't hold a readable one. */
+export async function readProjectAt(dir: string): Promise<Project> {
+  let parsed: (Project & Partial<LegacyProject>) | null
   try {
-    names = await fs.readdir(dir)
+    parsed = JSON.parse(await fs.readFile(join(dir, DATA_FILE), 'utf-8'))
   } catch {
-    return // no attachments folder, nothing to sweep
+    throw new Error(`There's no readable ${DATA_FILE} in it.`)
   }
-  const referenced = new Set<string>()
-  for (const [, name] of serialized.matchAll(/app-attachment:\/\/\/[^/"]+\/([^"?#]+)/g)) {
-    try {
-      referenced.add(decodeURIComponent(name))
-    } catch {
-      referenced.add(name) // malformed escape: match it literally rather than sweeping it
-    }
+  const hasTables = Array.isArray(parsed?.tables)
+  const hasLegacyTable =
+    Array.isArray(parsed?.fields) && Array.isArray(parsed?.records) && Array.isArray(parsed?.views)
+  if (!parsed || typeof parsed.name !== 'string' || (!hasTables && !hasLegacyTable)) {
+    throw new Error(`Its ${DATA_FILE} isn't a Crow project.`)
   }
-  const cutoff = Date.now() - ORPHAN_GRACE_MS
-  for (const name of names) {
-    if (referenced.has(name)) continue
-    try {
-      const stat = await fs.stat(join(dir, name))
-      if (!stat.isFile() || stat.mtimeMs > cutoff) continue
-      await fs.rm(join(dir, name), { force: true })
-    } catch {
-      // Unreadable or already gone — leave it rather than failing the save.
-    }
-  }
+  return migrateProject(parsed)
+}
+
+/** Writes `data.json` atomically: beside it first, then renamed over it. */
+export async function writeProjectAt(dir: string, project: Project): Promise<number> {
+  const target = join(dir, DATA_FILE)
+  const tmp = `${target}.tmp`
+  await fs.writeFile(tmp, JSON.stringify(project, null, 2), 'utf-8')
+  await fs.rename(tmp, target)
+  return (await fs.stat(target)).mtimeMs
+}
+
+// mtime of each open document's data.json as this process last wrote it, so
+// the watcher can tell our own saves from someone else's (e.g. the CLI).
+const savedMtimes = new Map<string, number>()
+
+export function wasSavedByUs(id: string, mtime: number): boolean {
+  return savedMtimes.get(id) === mtime
+}
+
+export async function getProject(id: string): Promise<Project> {
+  return readProjectAt(projectDir(id))
 }
 
 export async function saveProject(project: Project): Promise<void> {
-  await fs.mkdir(projectDir(project.id), { recursive: true })
-  const target = projectFile(project.id)
-  const tmp = `${target}.tmp`
-  const watchKey = `${project.id}/${DATA_FILE}`
-  const serialized = JSON.stringify(project, null, 2)
-  selfWrites.set(watchKey, Date.now())
-  await fs.writeFile(tmp, serialized, 'utf-8')
-  await fs.rename(tmp, target)
-  selfWrites.set(watchKey, Date.now())
-  // After the rename, so a sweep can only ever run against what's on disk.
-  await sweepAttachments(project.id, serialized).catch((err) =>
-    console.error('[saveProject] attachment sweep failed', err)
-  )
+  savedMtimes.set(project.id, await writeProjectAt(projectDir(project.id), project))
 }
 
-export async function createProject(name: string): Promise<Project> {
-  const project = newProject(name.trim() || 'Untitled')
-  await saveProject(project)
-  return project
+/**
+ * Points the project's `app-*:///` urls at a new id. Done over the serialized
+ * project so it covers every place a url can sit without walking the
+ * structure by hand; external http urls don't match.
+ */
+export function remapAssetUrls(project: Project, fromId: string, toId: string): Project {
+  if (fromId === toId) return { ...project, id: toId }
+  let remapped = JSON.stringify(project)
+  for (const scheme of Object.values(MEDIA_FOLDERS)) {
+    remapped = remapped.replaceAll(`${scheme}:///${fromId}/`, `${scheme}:///${toId}/`)
+  }
+  return { ...(JSON.parse(remapped) as Project), id: toId }
 }
 
-export async function deleteProject(id: string): Promise<void> {
-  selfWrites.set(`${id}/${DATA_FILE}`, Date.now())
-  await fs.rm(projectDir(id), { recursive: true, force: true })
+/** Every `<folder>/<name>` the serialized project points at. */
+function referencedMedia(serialized: string): Set<string> {
+  const referenced = new Set<string>()
+  for (const [folder, scheme] of Object.entries(MEDIA_FOLDERS)) {
+    for (const [, name] of serialized.matchAll(new RegExp(`${scheme}:///[^/"]+/([^"?#]+)`, 'g'))) {
+      let decoded = name
+      try {
+        decoded = decodeURIComponent(name)
+      } catch {
+        // malformed escape: match it literally rather than sweeping it
+      }
+      referenced.add(`${folder}/${decoded}`)
+    }
+  }
+  return referenced
+}
+
+/** Files younger than this are never swept: the CLI copies a file in before
+ *  it writes the data.json that references it. */
+const SWEEP_GRACE_MS = 60 * 1000
+
+/**
+ * Deletes media files the document no longer references.
+ *
+ * Run when a window closes, not on every save: while the window is open, an
+ * undo can put a removed image back, and its file has to still be there.
+ * Undo history ends with the window, and after that an unreferenced file has
+ * no way back — keeping it would only make the document grow forever.
+ */
+export async function sweepUnreferencedMedia(dir: string): Promise<void> {
+  let serialized: string
+  try {
+    serialized = await fs.readFile(join(dir, DATA_FILE), 'utf-8')
+  } catch {
+    return // no readable project: sweeping against it would delete everything
+  }
+  const referenced = referencedMedia(serialized)
+  const cutoff = Date.now() - SWEEP_GRACE_MS
+  for (const folder of Object.keys(MEDIA_FOLDERS)) {
+    let names: string[]
+    try {
+      names = await fs.readdir(join(dir, folder))
+    } catch {
+      continue
+    }
+    for (const name of names) {
+      if (referenced.has(`${folder}/${name}`)) continue
+      const path = join(dir, folder, name)
+      try {
+        const stat = await fs.stat(path)
+        if (!stat.isFile() || stat.mtimeMs > cutoff) continue
+        await fs.rm(path, { force: true })
+      } catch {
+        // unreadable or already gone — leave it
+      }
+    }
+  }
 }

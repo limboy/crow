@@ -2,7 +2,7 @@ import { dialog, type BrowserWindow } from 'electron'
 import { promises as fs } from 'fs'
 import { basename, extname } from 'path'
 import type { CsvFile } from '@shared/types'
-import { toFileName } from './transfer'
+import { toFileName } from './archive'
 
 /**
  * The file half of CSV import/export: pick a path, read or write UTF-8 text.

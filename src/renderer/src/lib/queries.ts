@@ -1,8 +1,7 @@
 import { useCallback, useSyncExternalStore } from 'react'
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import type { Project, ProjectMeta, Table } from '@shared/types'
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import type { Project, Table } from '@shared/types'
 import {
-  clearHistory,
   historySnapshot,
   recordChange,
   redoSnapshot,
@@ -11,35 +10,13 @@ import {
 } from '@/lib/history'
 import { patchTable, touchModifiedRecords } from '@/lib/ops'
 
-export function useProjects() {
-  return useQuery({ queryKey: ['projects'], queryFn: () => window.api.listProjects() })
-}
-
-export function useSetProjectOrder() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (ordered: ProjectMeta[]) =>
-      window.api.setProjectOrder(ordered.map((project) => project.id)),
-    onMutate: (ordered) => {
-      const previous = queryClient.getQueryData<ProjectMeta[]>(['projects'])
-      queryClient.setQueryData(['projects'], ordered)
-      return { previous }
-    },
-    onError: (_error, _ordered, context) => {
-      if (context?.previous) queryClient.setQueryData(['projects'], context.previous)
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
-    }
-  })
-}
-
 export function useProject(id: string) {
   return useQuery({
     queryKey: ['project', id],
     queryFn: () => window.api.getProject(id),
     staleTime: Infinity,
-    // A missing project (deleted, or the data folder changed out from under
-    // us) fails deterministically — retrying just delays ProjectPage's
-    // fallback-navigation from noticing it's gone.
+    // A missing project fails deterministically — there's nothing a retry
+    // would find that the first read didn't.
     retry: false
   })
 }
@@ -57,6 +34,14 @@ export type ProjectUpdater = (
 ) => void
 
 const saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const inflightSaves = new Set<Promise<void>>()
+
+function persist(queryClient: QueryClient, id: string): void {
+  const latest = queryClient.getQueryData<Project>(['project', id])
+  if (!latest) return
+  const save = window.api.saveProject(latest).finally(() => inflightSaves.delete(save))
+  inflightSaves.add(save)
+}
 
 /** Publishes a new version of the project: cached immediately (so the UI is
  *  instant), then persisted whole with a short debounce so rapid edits like
@@ -70,12 +55,28 @@ function commitProject(queryClient: QueryClient, id: string, project: Project): 
     id,
     setTimeout(() => {
       saveTimers.delete(id)
-      const latest = queryClient.getQueryData<Project>(['project', id])
-      if (!latest) return
-      void window.api
-        .saveProject(latest)
-        .then(() => queryClient.invalidateQueries({ queryKey: ['projects'] }))
+      persist(queryClient, id)
     }, 300)
+  )
+}
+
+/** Sends every save still waiting out its debounce, and resolves once they —
+ *  and any already on their way — have landed. The main process asks for this
+ *  before a window closes, the app quits, or Save is pressed. */
+export async function flushPendingSaves(queryClient: QueryClient): Promise<void> {
+  for (const [id, timer] of saveTimers) {
+    clearTimeout(timer)
+    saveTimers.delete(id)
+    persist(queryClient, id)
+  }
+  await Promise.allSettled([...inflightSaves])
+}
+
+/** Applies the document's new name (after Save As) to the cached project —
+ *  not as an edit: it isn't undoable, and the file already has it. */
+export function renameCachedProject(queryClient: QueryClient, id: string, name: string): void {
+  queryClient.setQueryData<Project>(['project', id], (project) =>
+    project ? { ...project, name } : project
   )
 }
 
@@ -124,8 +125,7 @@ export function useProjectHistory(id: string): ProjectHistory {
       if (!current) return
       const restored = take(id, current)
       if (!restored) return
-      // Restored content gets a fresh timestamp because it was just changed,
-      // even when the user has manually ordered the project list.
+      // Restored content gets a fresh timestamp because it was just changed.
       commitProject(queryClient, id, { ...restored, updatedAt: new Date().toISOString() })
     },
     [id, queryClient]
@@ -153,41 +153,4 @@ export function useUpdateTable(projectId: string, tableId: string): TableUpdater
       update((p) => patchTable(p, tableId, updater), options),
     [update, tableId]
   )
-}
-
-export function useCreateProject() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (name: string) => window.api.createProject(name),
-    onSuccess: (project) => {
-      queryClient.setQueryData(['project', project.id], project)
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
-    }
-  })
-}
-
-/** Resolves with the newly imported project, or null if the user cancelled
- *  (or the file was rejected — the main process reports that itself). */
-export function useImportProject() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: () => window.api.importProject(),
-    onSuccess: (project) => {
-      if (!project) return
-      queryClient.setQueryData(['project', project.id], project)
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
-    }
-  })
-}
-
-export function useDeleteProject() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => window.api.deleteProject(id),
-    onSuccess: (_data, id) => {
-      clearHistory(id)
-      queryClient.removeQueries({ queryKey: ['project', id] })
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
-    }
-  })
 }

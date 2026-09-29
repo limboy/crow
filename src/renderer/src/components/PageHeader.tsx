@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react'
-import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
+import { ThemeToggle } from '@/components/ThemeToggle'
+import { UpdateButton } from '@/components/UpdateButton'
 import { isMac } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 /**
- * Shared top bar for the routed pages. Reserves room for the macOS traffic
- * lights whenever the sidebar isn't there to host them itself — i.e. when
- * it's collapsed to icons/offcanvas, or rendered as a mobile overlay.
+ * Shared top bar for the routed pages. It doubles as the window's title bar,
+ * so on macOS it leaves room for the traffic lights, and it ends with the
+ * app-wide controls: the update button (when one is ready) and the theme toggle.
  */
 export function PageHeader({
   children,
@@ -15,19 +16,19 @@ export function PageHeader({
   children?: ReactNode
   className?: string
 }): React.JSX.Element {
-  const { state, isMobile } = useSidebar()
-  const needsTrafficLightGap = isMac && (isMobile || state === 'collapsed')
-
   return (
     <header
       className={cn(
-        'titlebar-drag flex h-12 shrink-0 items-center gap-1 border-b px-2 transition-[padding-left] duration-150 ease-linear',
-        needsTrafficLightGap && 'pl-20',
+        'titlebar-drag flex h-12 shrink-0 items-center gap-1 border-b px-2',
+        isMac && 'pl-20',
         className
       )}
     >
-      <SidebarTrigger />
       {children}
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        <UpdateButton />
+        <ThemeToggle />
+      </div>
     </header>
   )
 }

@@ -1,15 +1,21 @@
-import { app, BrowserWindow, Menu, protocol, shell } from 'electron'
-import { join } from 'path'
-import { pathToFileURL } from 'url'
+import { app, protocol } from 'electron'
+import { existsSync } from 'fs'
+import { extname } from 'path'
 import { registerIpc } from './ipc'
 import { registerImageProtocol } from './images'
 import { registerAudioProtocol } from './audio'
 import { registerVideoProtocol } from './video'
 import { registerAttachmentProtocol } from './attachments'
-import { seedIfEmpty } from './seed'
-import { watchProjects } from './watcher'
 import { initAutoUpdater } from './updater'
-import { buildAppMenu } from './menu'
+import { refreshAppMenu } from './menu'
+import { BUNDLE_EXT } from './archive'
+import {
+  hasOpenDocuments,
+  openDocument,
+  setRecentListener,
+  settleAll,
+  showWelcome
+} from './documents'
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app-image', privileges: { secure: true, supportFetchAPI: true, stream: true } },
@@ -25,75 +31,75 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'app-attachment', privileges: { secure: true, supportFetchAPI: true, stream: true } }
 ])
 
-const iconPath = join(__dirname, '../../build/icon.png')
-
-export function createWindow(): BrowserWindow {
-  const focusedWin = BrowserWindow.getFocusedWindow()
-  let bounds: { x?: number; y?: number } = {}
-  if (focusedWin) {
-    const [x, y] = focusedWin.getPosition()
-    bounds = { x: x + 24, y: y + 24 }
-  }
-
-  const win = new BrowserWindow({
-    width: 1320,
-    height: 860,
-    minWidth: 960,
-    minHeight: 600,
-    ...bounds,
-    show: false,
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
-    trafficLightPosition: { x: 16, y: 16 },
-    icon: iconPath,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
-  })
-
-  win.on('ready-to-show', () => win.show())
-
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
-    return { action: 'deny' }
-  })
-
-  const devUrl = !app.isPackaged ? process.env['ELECTRON_RENDERER_URL'] : undefined
-  const appUrl = devUrl ?? pathToFileURL(join(__dirname, '../renderer/index.html')).toString()
-
-  // The preload — and with it the whole `window.api` bridge — attaches to
-  // whatever this window loads, in any frame. So nothing but the app's own
-  // document may ever become a navigation here: an imported .crow can carry an
-  // arbitrary html file as an attachment, and rendering that in this window
-  // would hand it read/write access to every project. Anything else is a link
-  // the user meant to follow, which belongs to the browser.
-  win.webContents.on('will-navigate', (e, url) => {
-    if (url.startsWith(appUrl)) return
-    e.preventDefault()
-    if (url.startsWith('http://') || url.startsWith('https://')) shell.openExternal(url)
-  })
-
-  win.loadURL(appUrl)
-  return win
+/** `.crow` paths in a command line — how Windows and Linux hand the app a
+ *  double-clicked file, on first launch and (via second-instance) after. */
+function documentArgs(argv: string[]): string[] {
+  return argv.filter(
+    (arg) => !arg.startsWith('-') && extname(arg).toLowerCase() === `.${BUNDLE_EXT}` && existsSync(arg)
+  )
 }
 
-app.whenReady().then(async () => {
-  Menu.setApplicationMenu(buildAppMenu(() => createWindow()))
-  registerImageProtocol()
-  registerAudioProtocol()
-  registerVideoProtocol()
-  registerAttachmentProtocol()
-  registerIpc()
-  await seedIfEmpty()
-  watchProjects()
-  createWindow()
-  initAutoUpdater()
+// One process owns every open document, so a second launch just hands its
+// files to the first.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  let ready = false
+  // macOS delivers files opened from Finder through open-file, which can fire
+  // before the app is ready — those wait here until it is.
+  const pending: string[] = documentArgs(process.argv.slice(1))
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  app.on('open-file', (e, path) => {
+    e.preventDefault()
+    if (ready) void openDocument(path)
+    else pending.push(path)
   })
-})
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+  app.on('second-instance', (_e, argv) => {
+    const files = documentArgs(argv.slice(1))
+    if (files.length > 0) for (const path of files) void openDocument(path)
+    else if (!hasOpenDocuments()) showWelcome()
+  })
+
+  app.whenReady().then(async () => {
+    setRecentListener(refreshAppMenu)
+    refreshAppMenu()
+    registerImageProtocol()
+    registerAudioProtocol()
+    registerVideoProtocol()
+    registerAttachmentProtocol()
+    registerIpc()
+    ready = true
+
+    if (pending.length > 0) {
+      for (const path of pending.splice(0)) await openDocument(path)
+    }
+    if (!hasOpenDocuments()) showWelcome()
+    initAutoUpdater()
+
+    app.on('activate', (_e, hasVisibleWindows) => {
+      if (!hasVisibleWindows) showWelcome()
+    })
+  })
+
+  // Quitting closes every window, and a document window refuses to close until
+  // it has settled (last edits saved, unused media swept) — which would cancel
+  // the quit. So settle them all first, then quit for real.
+  let quitReady = false
+  let quitting = false
+  app.on('before-quit', (e) => {
+    if (quitReady || !hasOpenDocuments()) return
+    e.preventDefault()
+    if (quitting) return
+    quitting = true
+    void settleAll().then(() => {
+      quitting = false
+      quitReady = true
+      app.quit()
+    })
+  })
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit()
+  })
+}

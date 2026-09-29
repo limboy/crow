@@ -315,7 +315,7 @@ export interface LegacyProject {
   views: View[]
 }
 
-/** Where an asset sits inside a `.crow` archive, and which project folder it
+/** Where an asset sits inside an old single-file `.crow` archive, and which folder it
  *  is restored to. The archive mirrors the project's own layout. */
 export type ProjectAssetKind = 'image' | 'audio' | 'video' | 'attachment'
 
@@ -328,7 +328,7 @@ export interface ProjectBundleAsset {
   data: string
 }
 
-/** `project.json` inside a `.crow` archive: the schema, records and views, but
+/** `project.json` inside an old single-file `.crow` archive: the schema, records and views, but
  *  none of the bytes. Images, audio and attachments are separate entries in the
  *  archive, stored as themselves. */
 export interface ProjectManifest {
@@ -344,15 +344,11 @@ export interface LegacyProjectBundle extends ProjectManifest {
   assets: ProjectBundleAsset[]
 }
 
-export interface ProjectMeta {
-  id: string
+/** A document from the recent list, as the welcome screen shows it. */
+export interface RecentDocument {
+  path: string
+  /** File name without the `.crow` extension. */
   name: string
-  icon?: string
-  /** Records across every table in the project. */
-  recordCount: number
-  tableCount: number
-  createdAt: string
-  updatedAt: string
 }
 
 export interface ContextMenuItem {
@@ -387,18 +383,27 @@ export interface Api {
   showContextMenu: (items: ContextMenuItem[]) => Promise<string | null>
   /** Shows a native OS confirm dialog; resolves true if the user picked the confirm button. */
   showConfirmDialog: (options: ConfirmDialogOptions) => Promise<boolean>
-  listProjects: () => Promise<ProjectMeta[]>
-  createProject: (name: string) => Promise<Project>
+  /** Asks where to create a new `.crow` file, then opens it in its own window. */
+  newDocument: () => Promise<void>
+  /** Opens `path` — or, without one, the `.crow` files the user picks — each
+   *  in its own window. */
+  openDocument: (path?: string) => Promise<void>
+  getRecentDocuments: () => Promise<RecentDocument[]>
+  /** Reads the open document's project (named after its `.crow` file). */
   getProject: (id: string) => Promise<Project>
+  /** Saves the project straight into its `.crow` document. */
   saveProject: (project: Project) => Promise<void>
-  deleteProject: (id: string) => Promise<void>
-  setProjectOrder: (ids: string[]) => Promise<void>
-  /** Writes the project and its media to a `.crow` file the user picks;
-   *  resolves with the saved path, or null if cancelled. */
-  exportProject: (id: string) => Promise<string | null>
-  /** Reads a `.crow` file the user picks in as a new project (fresh id, so
-   *  importing the same bundle twice gives two projects); null if cancelled. */
-  importProject: () => Promise<Project | null>
+  /** Registers the handler the main process calls before a window closes (or
+   *  the app quits, or Save is pressed) — it must push any save still being
+   *  debounced. Returns unsubscribe. */
+  onFlushRequest: (callback: () => Promise<void>) => () => void
+  /** Fires with the document's new name after Save As; returns unsubscribe. */
+  onDocumentRenamed: (callback: (name: string) => void) => () => void
+  /** How many projects an older version of Crow left in its data folder. */
+  getLegacyProjectCount: () => Promise<number>
+  /** Copies those projects out as `.crow` documents into a folder the user picks;
+   *  true once they're all exported. */
+  exportLegacyProjects: () => Promise<boolean>
   /** Writes already-serialized CSV text to a file the user picks; resolves
    *  with the saved path, or null if cancelled. */
   exportCsv: (suggestedName: string, content: string) => Promise<string | null>
@@ -441,7 +446,7 @@ export interface Api {
   openVideo: (url: string) => Promise<boolean>
   /** Copies a stored attachment out to a path the user picks; false if cancelled. */
   saveAttachmentAs: (url: string, name: string) => Promise<boolean>
-  /** Fires when project files change on disk outside the app; returns unsubscribe. */
+  /** Fires when the open `.crow` file is changed outside the app; returns unsubscribe. */
   onProjectsChanged: (callback: () => void) => () => void
   /** Version of an already-downloaded update ready to install, if any. */
   getUpdateStatus: () => Promise<string | null>
@@ -449,14 +454,4 @@ export interface Api {
   installUpdate: () => Promise<void>
   /** Fires once an update has finished downloading in the background; returns unsubscribe. */
   onUpdateReady: (callback: (version: string) => void) => () => void
-  /** Current and default root folders where projects/images are stored. */
-  getDataDir: () => Promise<{ current: string; default: string }>
-  /** Opens a native folder picker; returns the chosen path, or null if cancelled. */
-  pickDataDir: () => Promise<string | null>
-  /**
-   * Stores new projects/images at `dir` from now on. When `move` is true
-   * (the default a caller should pass explicitly), existing data is moved
-   * there first; otherwise the app just switches over and leaves it in place.
-   */
-  setDataDir: (dir: string, move: boolean) => Promise<void>
 }

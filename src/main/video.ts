@@ -20,7 +20,11 @@ function videoPath(url: string): string | null {
   const [projectId, rawName] = decodeURIComponent(parsed.pathname).split('/').filter(Boolean)
   const name = rawName ? basename(rawName) : ''
   if (!projectId || !SAFE_ID.test(projectId) || !name || name.startsWith('.')) return null
-  return join(videoDir(projectId), name)
+  try {
+    return join(videoDir(projectId), name)
+  } catch {
+    return null // not an open document
+  }
 }
 
 // The stored file is named with a generated id, like every other asset, so
@@ -129,7 +133,7 @@ function parseRange(header: string | null, size: number): { start: number; end: 
   return { start, end }
 }
 
-// Serves <dataDir>/<projectId>/video/<name> as app-video:///<projectId>/<name>.
+// Serves <document>.crow/video/<name> as app-video:///<projectId>/<name>.
 // Unlike images and audio this answers range requests itself rather than
 // deferring to net.fetch: a poster is captured a quarter of the way into the
 // file, and without ranges the renderer would have to pull everything before

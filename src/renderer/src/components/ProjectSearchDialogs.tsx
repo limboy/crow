@@ -1,13 +1,12 @@
 import {
   CalendarDays,
   ChartColumn,
-  FolderKanban,
   GalleryVertical,
   SquareKanban,
   Table2,
   type LucideIcon
 } from 'lucide-react'
-import type { Project, ProjectMeta, ViewType } from '@shared/types'
+import type { Project, ViewType } from '@shared/types'
 import {
   Command,
   CommandDialog,
@@ -30,21 +29,17 @@ const VIEW_ICONS: Record<ViewType, LucideIcon> = {
 export function ProjectCommandPalette({
   open,
   onOpenChange,
-  projects,
   project,
   activeTableId,
   activeViewId,
-  onSelectProject,
   onSelectTable,
   onSelectView
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  projects: ProjectMeta[]
   project: Project
   activeTableId?: string
   activeViewId?: string
-  onSelectProject: (projectId: string) => void
   onSelectTable: (tableId: string) => void
   onSelectView: (tableId: string, viewId: string) => void
 }): React.JSX.Element {
@@ -57,29 +52,14 @@ export function ProjectCommandPalette({
     <CommandDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Go to project, table, or view"
-      description="Search navigation destinations across Crow."
+      title="Go to table or view"
+      description="Search the tables and views in this document."
       className="sm:max-w-lg"
     >
       <Command>
-        <CommandInput autoFocus placeholder="Go to project, table, or view…" />
+        <CommandInput autoFocus placeholder="Go to table or view…" />
         <CommandList>
           <CommandEmpty>No matching destination.</CommandEmpty>
-
-          <CommandGroup heading="Projects">
-            {projects.map((candidate) => (
-              <CommandItem
-                key={candidate.id}
-                value={`project:${candidate.id}`}
-                keywords={[candidate.name]}
-                data-checked={candidate.id === project.id}
-                onSelect={() => select(() => onSelectProject(candidate.id))}
-              >
-                <FolderKanban />
-                <span className="truncate">{candidate.name}</span>
-              </CommandItem>
-            ))}
-          </CommandGroup>
 
           <CommandGroup heading={`Tables in ${project.name}`}>
             {project.tables.map((table) => (

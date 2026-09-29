@@ -265,8 +265,3 @@ function normalizeView(view: View): View {
     }
   } as View
 }
-
-/** Records across every table — what the sidebar and project cards show. */
-export function projectRecordCount(project: Project): number {
-  return project.tables.reduce((total, table) => total + table.records.length, 0)
-}

@@ -18,7 +18,11 @@ function imagePath(url: string): string | null {
   const [projectId, rawName] = decodeURIComponent(parsed.pathname).split('/').filter(Boolean)
   const name = rawName ? basename(rawName) : ''
   if (!projectId || !SAFE_ID.test(projectId) || !name || name.startsWith('.')) return null
-  return join(imagesDir(projectId), name)
+  try {
+    return join(imagesDir(projectId), name)
+  } catch {
+    return null // not an open document
+  }
 }
 
 
@@ -70,7 +74,7 @@ export async function importImageData(
   }
 }
 
-// Serves <dataDir>/<projectId>/images/<name> as app-image:///<projectId>/<name>
+// Serves <document>.crow/images/<name> as app-image:///<projectId>/<name>
 // so the renderer can display locally stored images without loosening webSecurity.
 export function registerImageProtocol(): void {
   protocol.handle('app-image', (request) => {

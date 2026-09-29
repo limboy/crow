@@ -38,7 +38,11 @@ function attachmentPath(url: string): string | null {
   const [projectId, rawName] = decodeURIComponent(parsed.pathname).split('/').filter(Boolean)
   const name = rawName ? basename(rawName) : ''
   if (!projectId || !SAFE_ID.test(projectId) || !name || name.startsWith('.')) return null
-  return join(attachmentsDir(projectId), name)
+  try {
+    return join(attachmentsDir(projectId), name)
+  } catch {
+    return null // not an open document
+  }
 }
 
 export async function pickAttachments(
@@ -118,7 +122,7 @@ export async function saveAttachmentAs(
   }
 }
 
-// Serves <dataDir>/<projectId>/attachments/<name> as app-attachment:///<projectId>/<name>
+// Serves <document>.crow/attachments/<name> as app-attachment:///<projectId>/<name>
 // so the renderer can reference locally stored files without loosening webSecurity.
 export function registerAttachmentProtocol(): void {
   protocol.handle('app-attachment', (request) => {

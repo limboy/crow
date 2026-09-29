@@ -19,6 +19,16 @@ asar: true
 extraResources:
   - from: cli/crow.mjs
     to: cli/crow.mjs
+# Makes Crow the app that opens .crow documents. A document is a directory
+# (data.json plus its media folders); `isPackage` and the exported type below
+# make Finder show and open it as a single file. macOS delivers opened
+# documents through app 'open-file' — see src/main/index.ts.
+fileAssociations:
+  - ext: crow
+    name: Crow Document
+    description: Crow Document
+    role: Editor
+    isPackage: true
 # GitHub is the update feed for electron-updater (added later): each publish
 # uploads latest-mac.yml alongside the zip, which is what autoUpdater polls.
 publish:
@@ -37,6 +47,16 @@ mac:
       arch: [arm64]
   category: public.app-category.productivity
   icon: build/icon.icns
+  extendInfo:
+    UTExportedTypeDeclarations:
+      - UTTypeIdentifier: me.limboy.crow.document
+        UTTypeDescription: Crow Document
+        UTTypeConformsTo:
+          - com.apple.package
+          - public.composite-content
+        UTTypeTagSpecification:
+          public.filename-extension:
+            - crow
 dmg:
   artifactName: ${name}-${version}.${ext}
 win:

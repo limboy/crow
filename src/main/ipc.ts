@@ -1,16 +1,7 @@
 import { BrowserWindow, dialog, ipcMain, Menu } from 'electron'
 import type { ConfirmDialogOptions, ContextMenuItem, Project } from '@shared/types'
-import {
-  createProject,
-  deleteProject,
-  ensureProjectsRootDir,
-  getProject,
-  listProjects,
-  saveProject,
-  saveProjectOrder
-} from './storage'
+import { saveProject } from './storage'
 import { importImageData, pickImage, saveImageAs } from './images'
-import { exportProject, importProject } from './transfer'
 import { exportCsv, importCsv } from './csv'
 import { importAudioData, pickAudio, saveAudioAs } from './audio'
 import { importVideoData, openVideo, pickVideo, saveVideoAs } from './video'
@@ -21,48 +12,17 @@ import {
   saveAttachmentAs
 } from './attachments'
 import { getReadyUpdateVersion, installReadyUpdate } from './updater'
-import { defaultDataDir, getDataDir, setDataDir } from './config'
-import { watchProjects } from './watcher'
-
-function broadcastToOthers(sender: Electron.WebContents, channel: string, ...args: unknown[]): void {
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed() && win.webContents !== sender) {
-      win.webContents.send(channel, ...args)
-    }
-  }
-}
+import { getDocumentProject, registerDocumentIpc } from './documents'
+import { countLegacyProjects, exportLegacyProjects } from './legacy'
 
 export function registerIpc(): void {
-  ipcMain.handle('projects:list', () => listProjects())
-  ipcMain.handle('projects:create', async (e, name: string) => {
-    const project = await createProject(name)
-    broadcastToOthers(e.sender, 'projects:changed')
-    return project
-  })
-  ipcMain.handle('projects:get', (_e, id: string) => getProject(id))
-  ipcMain.handle('projects:save', async (e, project: Project) => {
-    const saved = await saveProject(project)
-    broadcastToOthers(e.sender, 'projects:changed')
-    return saved
-  })
-  ipcMain.handle('projects:delete', async (e, id: string) => {
-    const res = await deleteProject(id)
-    broadcastToOthers(e.sender, 'projects:changed')
-    return res
-  })
-  ipcMain.handle('projects:setOrder', async (e, ids: string[]) => {
-    const res = await saveProjectOrder(ids)
-    broadcastToOthers(e.sender, 'projects:changed')
-    return res
-  })
-  ipcMain.handle('projects:export', (e, id: string) =>
-    exportProject(BrowserWindow.fromWebContents(e.sender), id)
+  registerDocumentIpc()
+  ipcMain.handle('projects:get', (_e, id: string) => getDocumentProject(id))
+  ipcMain.handle('projects:save', (_e, project: Project) => saveProject(project))
+  ipcMain.handle('legacy:count', () => countLegacyProjects())
+  ipcMain.handle('legacy:export', (e) =>
+    exportLegacyProjects(BrowserWindow.fromWebContents(e.sender))
   )
-  ipcMain.handle('projects:import', async (e) => {
-    const project = await importProject(BrowserWindow.fromWebContents(e.sender))
-    if (project) broadcastToOthers(e.sender, 'projects:changed')
-    return project
-  })
   ipcMain.handle('csv:export', (e, suggestedName: string, content: string) =>
     exportCsv(BrowserWindow.fromWebContents(e.sender), suggestedName, content)
   )
@@ -161,31 +121,5 @@ export function registerIpc(): void {
         }
     const result = win ? await dialog.showMessageBox(win, boxOptions) : await dialog.showMessageBox(boxOptions)
     return !alert && result.response === 1
-  })
-
-  ipcMain.handle('settings:getDataDir', () => ({
-    current: getDataDir(),
-    default: defaultDataDir()
-  }))
-
-  ipcMain.handle('settings:pickDataDir', async (e) => {
-    const win = BrowserWindow.fromWebContents(e.sender)
-    const options = {
-      properties: ['openDirectory' as const, 'createDirectory' as const]
-    }
-    const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
-    if (result.canceled || !result.filePaths[0]) return null
-    return result.filePaths[0]
-  })
-
-  ipcMain.handle('settings:setDataDir', async (_e, dir: string, move: boolean) => {
-    await setDataDir(dir, { move })
-    // The move:false path points at a folder that may not exist yet, which
-    // would make the watcher below throw.
-    await ensureProjectsRootDir()
-    watchProjects()
-    for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send('projects:changed')
-    }
   })
 }

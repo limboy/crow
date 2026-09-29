@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   CalendarDays,
   ChartColumn,
@@ -44,9 +45,9 @@ import { csvRows, tableFromCsv } from '@/lib/csvTable'
 import { applyFilters, applySorts } from '@/lib/derive'
 import { ProjectTablesContext, useProjectTables } from '@/lib/relations'
 import {
+  renameCachedProject,
   useProject,
   useProjectHistory,
-  useProjects,
   useUpdateProject,
   useUpdateTable,
   type ProjectHistory,
@@ -83,9 +84,8 @@ export interface ViewProps {
 
 export default function ProjectPage(): React.JSX.Element {
   const { id = '' } = useParams()
-  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { data: project, isLoading, isError } = useProject(id)
-  const { data: projects, isLoading: isLoadingProjects } = useProjects()
   const updateProject = useUpdateProject(id)
   const history = useProjectHistory(id)
   useUndoRedoShortcuts(history)
@@ -97,17 +97,11 @@ export default function ProjectPage(): React.JSX.Element {
   const [openRecordId, setOpenRecordId] = useState<string | null>(null)
   const { commandOpen, setCommandOpen } = useCommandShortcut()
 
-  // A project can disappear out from under this route (deleted elsewhere,
-  // data folder switched to one that doesn't have it, stale link, etc).
-  // react-query keeps the last-successful `project` around even once a
-  // refetch errors, so isError — not just a missing `project` — is what
-  // tells us it's actually gone. Once we're sure, fall back to another
-  // project instead of leaving the user stranded on a dead route.
-  useEffect(() => {
-    if (isLoading || isLoadingProjects || (project && !isError) || !projects) return
-    const next = projects.find((p) => p.id !== id) ?? projects[0]
-    navigate(next ? `/project/${next.id}` : '/', { replace: true })
-  }, [isLoading, isLoadingProjects, project, isError, projects, id, navigate])
+  // The document is named after its file, so Save As renames it.
+  useEffect(
+    () => window.api.onDocumentRenamed((name) => renameCachedProject(queryClient, id, name)),
+    [queryClient, id]
+  )
 
   // A table/view id left over from another project (or one deleted elsewhere)
   // simply falls back to the first, so the page always has something to show.
@@ -128,7 +122,7 @@ export default function ProjectPage(): React.JSX.Element {
   if (!project || isError) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3">
-        <p className="text-sm text-muted-foreground">Project not found.</p>
+        <p className="text-sm text-muted-foreground">This document couldn't be read.</p>
       </div>
     )
   }
@@ -147,8 +141,10 @@ export default function ProjectPage(): React.JSX.Element {
             onSelect={setActiveTableId}
             update={updateProject}
           />
-          <Separator orientation="vertical" className="ml-auto mr-1 !h-4" />
+          <div className="flex-1" />
+          <Separator orientation="vertical" className="mr-1 !h-4" />
           <HistoryButtons history={history} />
+          <Separator orientation="vertical" className="mx-1 !h-4" />
         </PageHeader>
 
         {activeTable && (
@@ -219,11 +215,9 @@ export default function ProjectPage(): React.JSX.Element {
         <ProjectCommandPalette
           open={commandOpen}
           onOpenChange={setCommandOpen}
-          projects={projects ?? []}
           project={project}
           activeTableId={activeTable?.id}
           activeViewId={activeView?.id}
-          onSelectProject={(projectId) => navigate(`/project/${projectId}`)}
           onSelectTable={setActiveTableId}
           onSelectView={selectTableView}
         />

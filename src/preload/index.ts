@@ -4,14 +4,32 @@ import type { Api, ConfirmDialogOptions, ContextMenuItem, Project } from '@share
 const api: Api = {
   showContextMenu: (items: ContextMenuItem[]) => ipcRenderer.invoke('menu:popup', items),
   showConfirmDialog: (options: ConfirmDialogOptions) => ipcRenderer.invoke('dialog:confirm', options),
-  listProjects: () => ipcRenderer.invoke('projects:list'),
-  createProject: (name: string) => ipcRenderer.invoke('projects:create', name),
+  newDocument: () => ipcRenderer.invoke('documents:new'),
+  openDocument: (path?: string) => ipcRenderer.invoke('documents:open', path),
+  getRecentDocuments: () => ipcRenderer.invoke('documents:recent'),
   getProject: (id: string) => ipcRenderer.invoke('projects:get', id),
   saveProject: (project: Project) => ipcRenderer.invoke('projects:save', project),
-  deleteProject: (id: string) => ipcRenderer.invoke('projects:delete', id),
-  setProjectOrder: (ids: string[]) => ipcRenderer.invoke('projects:setOrder', ids),
-  exportProject: (id: string) => ipcRenderer.invoke('projects:export', id),
-  importProject: () => ipcRenderer.invoke('projects:import'),
+  onFlushRequest: (callback: () => Promise<void>) => {
+    const listener = (_e: unknown, token: number): void => {
+      // Answered whatever happens, so the main process never waits out its timeout.
+      void callback()
+        .catch(() => {})
+        .finally(() => ipcRenderer.send('document:flushed', token))
+    }
+    ipcRenderer.on('document:flush', listener)
+    return () => {
+      ipcRenderer.removeListener('document:flush', listener)
+    }
+  },
+  onDocumentRenamed: (callback: (name: string) => void) => {
+    const listener = (_e: unknown, name: string): void => callback(name)
+    ipcRenderer.on('document:renamed', listener)
+    return () => {
+      ipcRenderer.removeListener('document:renamed', listener)
+    }
+  },
+  getLegacyProjectCount: () => ipcRenderer.invoke('legacy:count'),
+  exportLegacyProjects: () => ipcRenderer.invoke('legacy:export'),
   exportCsv: (suggestedName: string, content: string) =>
     ipcRenderer.invoke('csv:export', suggestedName, content),
   importCsv: () => ipcRenderer.invoke('csv:import'),
@@ -49,10 +67,7 @@ const api: Api = {
     return () => {
       ipcRenderer.removeListener('updater:ready', listener)
     }
-  },
-  getDataDir: () => ipcRenderer.invoke('settings:getDataDir'),
-  pickDataDir: () => ipcRenderer.invoke('settings:pickDataDir'),
-  setDataDir: (dir: string, move: boolean) => ipcRenderer.invoke('settings:setDataDir', dir, move)
+  }
 }
 
 contextBridge.exposeInMainWorld('api', api)

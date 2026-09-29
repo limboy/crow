@@ -1,17 +1,15 @@
 #!/usr/bin/env node
 /**
- * crow CLI — lets scripts and AI agents read and write Crow projects.
+ * crow CLI — lets scripts and AI agents read and write Crow documents.
  *
- * It operates directly on the same JSON files the desktop app uses
- * (userData/projects/<project-id>/data.json, with that project's
- * images/audio/video alongside it). The app watches the projects directory, so changes made here
- * show up live in an open window. All output is JSON on stdout; errors are
- * JSON on stderr with a non-zero exit code. Run `crow help` for the full
+ * Every command takes the path of a `.crow` document — the same documents the
+ * desktop app opens and saves. The app watches an open document, so changes
+ * made here show up live in its window. All output is JSON on stdout; errors
+ * are JSON on stderr with a non-zero exit code. Run `crow help` for the full
  * command reference.
  */
-import { promises as fs, existsSync, readFileSync } from 'fs'
-import { join, extname, basename } from 'path'
-import { homedir } from 'os'
+import { promises as fs, existsSync } from 'fs'
+import { join, extname, basename, dirname, resolve } from 'path'
 import { randomUUID } from 'crypto'
 
 const SAFE_ID = /^[a-zA-Z0-9-]+$/
@@ -41,69 +39,70 @@ const uuid = () => randomUUID()
 const now = () => new Date().toISOString()
 
 // ---------------------------------------------------------------------------
-// Data directory (must match Electron's app.getPath('userData') for "crow")
+// .crow documents
 // ---------------------------------------------------------------------------
 
-// Electron's userData path — fixed regardless of where the user points the
-// app's data at. This is also where the app's config.json (which records
-// that choice) always lives, so it doubles as the anchor for finding it.
-function platformDefaultDir() {
-  const home = homedir()
-  switch (process.platform) {
-    case 'darwin':
-      return join(home, 'Library', 'Application Support', 'crow')
-    case 'win32':
-      return join(process.env.APPDATA ?? join(home, 'AppData', 'Roaming'), 'crow')
-    default:
-      return join(process.env.XDG_CONFIG_HOME ?? join(home, '.config'), 'crow')
-  }
+// A .crow document is a directory (shown as a single file by Finder):
+//
+//   Name.crow/
+//   ├── data.json      the project
+//   ├── images/ audio/ video/ attachments/
+//
+// The CLI reads and writes it in place, exactly as the app does. See
+// docs/crow-format.md.
+
+const DATA_FILE = 'data.json'
+
+let docDir = null
+
+const imagesDir = () => join(docDir, 'images')
+const audioDir = () => join(docDir, 'audio')
+const videoDir = () => join(docDir, 'video')
+const attachmentsDir = () => join(docDir, 'attachments')
+
+/** Accepts the document directory, or the data.json inside it. */
+function documentPath(ref) {
+  let path = resolve(ref)
+  if (basename(path) === DATA_FILE) path = dirname(path)
+  if (extname(path).toLowerCase() !== '.crow') fail(`Expected a .crow document, got "${ref}"`)
+  return path
 }
 
-// Mirrors src/main/config.ts: the app lets the user relocate its data
-// directory (e.g. into Dropbox), recording the choice in a config.json that
-// always lives at the platform-default path. Follow the same rule here so
-// the CLI reads/writes wherever the app actually is right now.
-function configuredDataDir() {
+async function openDocument(ref) {
+  const path = documentPath(ref)
+  let stat
   try {
-    const config = JSON.parse(readFileSync(join(platformDefaultDir(), 'config.json'), 'utf-8'))
-    if (config.dataDir && existsSync(config.dataDir)) return config.dataDir
+    stat = await fs.stat(path)
   } catch {
-    // no config.json, or it's unreadable/malformed — fall through to default
+    fail(`No document at ${path}`)
   }
-  return null
-}
-
-function dataDir() {
-  if (process.env.CROW_DIR) return process.env.CROW_DIR
-  return configuredDataDir() ?? platformDefaultDir()
-}
-
-const projectsRootDir = () => join(dataDir(), 'projects')
-const projectDir = (id) => join(projectsRootDir(), id)
-const projectFile = (id) => join(projectDir(id), 'data.json')
-const imagesDir = (id) => join(projectDir(id), 'images')
-const audioDir = (id) => join(projectDir(id), 'audio')
-const videoDir = (id) => join(projectDir(id), 'video')
-const attachmentsDir = (id) => join(projectDir(id), 'attachments')
-
-// ---------------------------------------------------------------------------
-// Storage (same format + atomic write strategy as the app)
-// ---------------------------------------------------------------------------
-
-async function listProjectIds() {
-  let entries
+  if (stat.isFile()) {
+    fail(`${path} is a single-file .crow from an older version of Crow. Open it in the app once to convert it.`)
+  }
+  let project
   try {
-    entries = await fs.readdir(projectsRootDir(), { withFileTypes: true })
+    project = JSON.parse(await fs.readFile(join(path, DATA_FILE), 'utf-8'))
   } catch {
-    return []
+    fail(`${path} has no readable ${DATA_FILE}`)
   }
-  return entries.filter((e) => e.isDirectory() && SAFE_ID.test(e.name)).map((e) => e.name)
+  if (!project || typeof project.name !== 'string') fail(`${path} isn't a Crow document`)
+  docDir = path
+  return migrateProject(project)
+}
+
+/** Writes data.json atomically. An app window with the document open picks
+ *  the change up live. */
+async function saveProject(project) {
+  const target = join(docDir, DATA_FILE)
+  const tmp = `${target}.tmp`
+  await fs.writeFile(tmp, JSON.stringify(project, null, 2), 'utf-8')
+  await fs.rename(tmp, target)
 }
 
 /**
  * Mirrors src/shared/migrate.ts: projects saved before multi-table support
  * keep fields/records/views at the top level, and that becomes their single
- * table. Applied on read only — the file is upgraded the next time it's saved.
+ * table. Written back in the current shape on the next save.
  */
 function migrateProject(project) {
   let migrated = project
@@ -125,29 +124,8 @@ function migrateProject(project) {
   return normalizeRelationPairs(migrated)
 }
 
-async function readAllProjects() {
-  const ids = await listProjectIds()
-  const projects = []
-  for (const id of ids) {
-    try {
-      projects.push(migrateProject(JSON.parse(await fs.readFile(projectFile(id), 'utf-8'))))
-    } catch {
-      // skip unreadable files rather than failing the whole list
-    }
-  }
-  return projects
-}
-
 function recordCount(project) {
   return project.tables.reduce((total, table) => total + table.records.length, 0)
-}
-
-async function saveProject(project) {
-  await fs.mkdir(projectDir(project.id), { recursive: true })
-  const target = projectFile(project.id)
-  const tmp = `${target}.tmp`
-  await fs.writeFile(tmp, JSON.stringify(project, null, 2), 'utf-8')
-  await fs.rename(tmp, target)
 }
 
 async function mutateProject(ref, fn) {
@@ -158,17 +136,9 @@ async function mutateProject(ref, fn) {
   return result
 }
 
+/** `ref` is the path of a .crow file. */
 async function resolveProject(ref) {
-  const projects = await readAllProjects()
-  if (projects.length === 0) fail(`No projects found in ${dataDir()}`)
-  const byId = projects.find((p) => p.id === ref)
-  if (byId) return byId
-  const byName = projects.filter((p) => p.name.toLowerCase() === ref.toLowerCase())
-  if (byName.length === 1) return byName[0]
-  if (byName.length > 1) fail(`Project name "${ref}" is ambiguous; use an id: ${byName.map((p) => p.id).join(', ')}`)
-  const byPrefix = projects.filter((p) => p.id.startsWith(ref))
-  if (byPrefix.length === 1) return byPrefix[0]
-  fail(`No project matches "${ref}". Available: ${projects.map((p) => `${p.name} (${p.id})`).join(', ')}`)
+  return openDocument(ref)
 }
 
 /**
@@ -793,21 +763,21 @@ function parseJsonArg(raw, what) {
 
 const HELP = `crow — CLI for the Crow desktop app, built for scripts and AI agents.
 
-Data lives in ${dataDir()} (follows the app's configured data location;
-override with CROW_DIR or --data-dir).
-Changes appear live in the app if it is open. All output is JSON.
-Projects are referenced by name or id; records by id (unique prefixes work).
+Every command works on a .crow document, given by its path — the same
+documents the Crow app opens and saves (a .crow is a folder holding data.json
+and its media; the data.json path works too). If the document is open in the app, the
+change appears there live. All output is JSON. Records are referenced by id
+(unique prefixes work).
 
-A project holds one or more tables, each with its own fields, records and
+A document holds one or more tables, each with its own fields, records and
 views. Every record/field command takes --table <name>; it can be omitted when
-the project has only one table, and is required when it has several.
+the document has only one table, and is required when it has several.
 
 COMMANDS
   help                                     Show this help
-  info                                     Show data directory, project and table counts
-  list-projects                            List all projects
-  create-project <name> [--fields JSON] [--table NAME]
-                                           Create a project with one table. --fields is a JSON
+  create-project <file.crow> [--fields JSON] [--table NAME]
+                                           Create a new document with one table (refuses to
+                                           overwrite an existing one). --fields is a JSON
                                            array like
                                            '[{"name":"Title","type":"text"},
                                              {"name":"Status","type":"select","choices":["Todo","Done"]},
@@ -818,37 +788,36 @@ COMMANDS
                                            field is created in the linked table automatically.
                                            Default: a single "Name" text field.
                                            --table names the table (default "Table").
-  delete-project <project> --yes           Delete a project permanently (requires --yes)
-  schema <project> [--table NAME]          Show fields, choices, views and record count, for
+  schema <file.crow> [--table NAME]        Show fields, choices, views and record count, for
                                            every table or just one
-  list-tables <project>                    List the project's tables
-  create-table <project> <name> [--fields JSON]
+  list-tables <file.crow>                  List the project's tables
+  create-table <file.crow> <name> [--fields JSON]
                                            Add a table (same --fields format as create-project)
-  rename-table <project> <table> --to <new-name>
+  rename-table <file.crow> <table> --to <new-name>
                                            Rename a table
-  delete-table <project> <table> --yes     Delete a table and all its records (requires --yes;
+  delete-table <file.crow> <table> --yes   Delete a table and all its records (requires --yes;
                                            a project always keeps at least one table)
-  add-field <project> <name> <type> [--choices "A,B,C"] [--table NAME] [--date-format NAME]
+  add-field <file.crow> <name> <type> [--choices "A,B,C"] [--table NAME] [--date-format NAME]
                                            Add a field. Types: ${FIELD_TYPES.join(', ')}
                                            A relation field takes --link-table <name>, the table
                                            in the same project its records link to (may be its
                                            own table), plus --single to allow only one link. Its
                                            paired field is created automatically.
-  delete-field <project> <name> [--table NAME]
+  delete-field <file.crow> <name> [--table NAME]
                                            Remove a field and all its values
-  list-records <project> [--table NAME] [--where JSON] [--limit N] [--offset N]
+  list-records <file.crow> [--table NAME] [--where JSON] [--limit N] [--offset N]
                                            List records. --where filters by equality on
                                            field-name-keyed values, e.g. '{"Status":"Todo"}'
                                            (multi-select matches if it contains the value,
                                            null matches empty).
-  get-record <project> <record-id> [--table NAME]
+  get-record <file.crow> <record-id> [--table NAME]
                                            Show one record
-  add-record <project> <values-json> [--table NAME]
+  add-record <file.crow> <values-json> [--table NAME]
                                            Create record(s). Values are keyed by field name;
                                            pass an array of objects to create several at once.
-  update-record <project> <record-id> <values-json> [--table NAME]
+  update-record <file.crow> <record-id> <values-json> [--table NAME]
                                            Merge values into a record (only listed fields change)
-  delete-record <project> <record-id> [--table NAME]
+  delete-record <file.crow> <record-id> [--table NAME]
                                            Delete a record
 
 VALUE FORMATS (per field type, when writing)
@@ -862,11 +831,11 @@ VALUE FORMATS (per field type, when writing)
   relation      array of linked records, each a record id (unique prefixes work) or the
                 text of that record's first field; a single value is accepted for one link.
                 Read back as the linked records' names.
-  image         path to a local image file (copied into the app's storage),
+  image         path to a local image file (copied into the document),
                 or an existing app-image:/// URL
-  audio         path to a local audio file (copied into the app's storage),
+  audio         path to a local audio file (copied into the document),
                 or an existing app-audio:/// URL
-  video         path to a local video file (copied into the app's storage), or an
+  video         path to a local video file (copied into the document), or an
                 existing app-video:/// URL. Read back as {url,name,poster}. The cover
                 frame is captured a quarter of the way in by the app, which owns the
                 only decoder — a video added here shows a placeholder until the app's
@@ -877,7 +846,7 @@ VALUE FORMATS (per field type, when writing)
                 one is an error. Read back as an ISO instant. --date-format picks how
                 the app displays it: slash (2026/01/30), slashTime, slashTimeZone,
                 dash (2026-01-30), dashTime, dashTimeZone.
-  attachment    array of local file paths (each copied into the app's storage) —
+  attachment    array of local file paths (each copied into the document) —
                 a single path is accepted for one file. Also takes a {url,name}
                 object exactly as read back, which is how you move an existing
                 attachment between records. A bare app-attachment:/// URL works
@@ -887,16 +856,16 @@ VALUE FORMATS (per field type, when writing)
   null          clears the field (any type)
 
 EXAMPLES
-  crow list-projects
-  crow schema "My Tasks"
-  crow add-record "My Tasks" '{"Name":"Buy milk","Status":"Todo","Due":"2026-08-10"}'
-  crow list-records "My Tasks" --where '{"Status":"Todo"}' --limit 20
-  crow update-record "My Tasks" 3f2a '{"Status":"Done"}'
-  crow create-table "My Tasks" People --fields '[{"name":"Name","type":"text"}]'
-  crow add-record "My Tasks" '{"Name":"Ada"}' --table People
-  crow add-field "My Tasks" Owner relation --link-table People --single
-  crow add-field "My Tasks" Added createdTime --date-format slashTime
-  crow add-record "My Tasks" '{"Name":"Ship 1.0","Owner":"Ada"}'
+  crow create-project tasks.crow --fields '[{"name":"Name","type":"text"},{"name":"Status","type":"select","choices":["Todo","Done"]}]'
+  crow schema tasks.crow
+  crow add-record tasks.crow '{"Name":"Buy milk","Status":"Todo","Due":"2026-08-10"}'
+  crow list-records tasks.crow --where '{"Status":"Todo"}' --limit 20
+  crow update-record tasks.crow 3f2a '{"Status":"Done"}'
+  crow create-table tasks.crow People --fields '[{"name":"Name","type":"text"}]'
+  crow add-record tasks.crow '{"Name":"Ada"}' --table People
+  crow add-field tasks.crow Owner relation --link-table People --single
+  crow add-field tasks.crow Added createdTime --date-format slashTime
+  crow add-record tasks.crow '{"Name":"Ship 1.0","Owner":"Ada"}'
 `
 
 // ---------------------------------------------------------------------------
@@ -904,37 +873,17 @@ EXAMPLES
 // ---------------------------------------------------------------------------
 
 const commands = {
-  async 'list-projects'() {
-    const projects = await readAllProjects()
-    projects.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    output({
-      projects: projects.map((p) => ({
-        id: p.id,
-        name: p.name,
-        tables: p.tables.map((t) => t.name),
-        recordCount: recordCount(p),
-        updatedAt: p.updatedAt
-      }))
-    })
-  },
-
-  async info() {
-    const projects = await readAllProjects()
-    output({
-      dataDir: dataDir(),
-      projectCount: projects.length,
-      tableCount: projects.reduce((total, p) => total + p.tables.length, 0)
-    })
-  },
-
   async 'create-project'({ positional, flags }) {
-    const name = positional[0]
-    if (!name) fail('Usage: create-project <name> [--fields JSON] [--table NAME]')
+    if (!positional[0]) fail('Usage: create-project <file.crow> [--fields JSON] [--table NAME]')
+    const path = documentPath(positional[0])
+    if (existsSync(path)) fail(`${path} already exists`)
+    await fs.mkdir(path, { recursive: true })
+    docDir = path
     const tableName = typeof flags.table === 'string' ? flags.table : 'Table'
     const table = buildTable(tableName, [])
     const project = {
       id: uuid(),
-      name,
+      name: basename(path, extname(path)),
       createdAt: now(),
       updatedAt: now(),
       tables: [table]
@@ -945,22 +894,13 @@ const commands = {
     output(schemaOf(project))
   },
 
-  async 'delete-project'({ positional, flags }) {
-    const project = await resolveProject(positional[0] ?? fail('Usage: delete-project <project> --yes'))
-    if (flags.yes !== true) {
-      fail(`Refusing to delete "${project.name}" (${project.tables.length} tables, ${recordCount(project)} records). Re-run with --yes to confirm.`)
-    }
-    await fs.rm(projectDir(project.id), { recursive: true, force: true })
-    output({ deleted: { id: project.id, name: project.name } })
-  },
-
   async schema({ positional, flags }) {
-    const project = await resolveProject(positional[0] ?? fail('Usage: schema <project> [--table NAME]'))
+    const project = await resolveProject(positional[0] ?? fail('Usage: schema <file.crow> [--table NAME]'))
     output(schemaOf(project, flags.table === undefined ? undefined : resolveTable(project, flags.table)))
   },
 
   async 'list-tables'({ positional }) {
-    const project = await resolveProject(positional[0] ?? fail('Usage: list-tables <project>'))
+    const project = await resolveProject(positional[0] ?? fail('Usage: list-tables <file.crow>'))
     output({
       project: project.name,
       tables: project.tables.map((t) => ({
@@ -974,7 +914,7 @@ const commands = {
 
   async 'create-table'({ positional, flags }) {
     const [ref, name] = positional
-    if (!ref || !name) fail('Usage: create-table <project> <name> [--fields JSON]')
+    if (!ref || !name) fail('Usage: create-table <file.crow> <name> [--fields JSON]')
     const schema = await mutateProject(ref, (project) => {
       if (project.tables.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
         fail(`Project "${project.name}" already has a table named "${name}"`)
@@ -990,7 +930,7 @@ const commands = {
 
   async 'rename-table'({ positional, flags }) {
     const [ref, name] = positional
-    if (!ref || typeof flags.to !== 'string') fail('Usage: rename-table <project> <table> --to <new-name>')
+    if (!ref || typeof flags.to !== 'string') fail('Usage: rename-table <file.crow> <table> --to <new-name>')
     const schema = await mutateProject(ref, (project) => {
       const table = resolveTable(project, name ?? flags.table)
       table.name = flags.to
@@ -1001,11 +941,11 @@ const commands = {
 
   async 'delete-table'({ positional, flags }) {
     const [ref, name] = positional
-    if (!ref || !name) fail('Usage: delete-table <project> <table> --yes')
+    if (!ref || !name) fail('Usage: delete-table <file.crow> <table> --yes')
     const deleted = await mutateProject(ref, (project) => {
       const table = resolveTable(project, name)
       // Matches the app: a project always keeps at least one table.
-      if (project.tables.length <= 1) fail(`"${table.name}" is the only table in "${project.name}"; delete the project instead.`)
+      if (project.tables.length <= 1) fail(`"${table.name}" is the only table in "${project.name}"; delete the document instead.`)
       if (flags.yes !== true) fail(`Refusing to delete table "${table.name}" (${table.records.length} records). Re-run with --yes to confirm.`)
       project.tables = project.tables.filter((t) => t.id !== table.id)
       // Matches the app: a link into a table that's gone has nothing left to
@@ -1022,7 +962,7 @@ const commands = {
 
   async 'add-field'({ positional, flags }) {
     const [ref, name, type] = positional
-    if (!ref || !name || !type) fail('Usage: add-field <project> <name> <type> [--choices "A,B,C"] [--link-table NAME] [--single] [--date-format NAME]')
+    if (!ref || !name || !type) fail('Usage: add-field <file.crow> <name> <type> [--choices "A,B,C"] [--link-table NAME] [--single] [--date-format NAME]')
     const choices = typeof flags.choices === 'string' ? flags.choices.split(',').map((c) => c.trim()).filter(Boolean) : []
     const schema = await mutateProject(ref, (project) => {
       const table = resolveTable(project, flags.table)
@@ -1045,7 +985,7 @@ const commands = {
 
   async 'delete-field'({ positional, flags }) {
     const [ref, name] = positional
-    if (!ref || !name) fail('Usage: delete-field <project> <name> [--table NAME]')
+    if (!ref || !name) fail('Usage: delete-field <file.crow> <name> [--table NAME]')
     const schema = await mutateProject(ref, (project) => {
       const table = resolveTable(project, flags.table)
       deleteRelationField(project, table, resolveField(table, name))
@@ -1055,7 +995,7 @@ const commands = {
   },
 
   async 'list-records'({ positional, flags }) {
-    const project = await resolveProject(positional[0] ?? fail('Usage: list-records <project> [--table NAME] [--where JSON] [--limit N] [--offset N]'))
+    const project = await resolveProject(positional[0] ?? fail('Usage: list-records <file.crow> [--table NAME] [--where JSON] [--limit N] [--offset N]'))
     const table = resolveTable(project, flags.table)
     let records = table.records.map((r) => humanize(table, r, project))
     if (typeof flags.where === 'string') {
@@ -1072,7 +1012,7 @@ const commands = {
 
   async 'get-record'({ positional, flags }) {
     const [ref, recordRef] = positional
-    if (!ref || !recordRef) fail('Usage: get-record <project> <record-id> [--table NAME]')
+    if (!ref || !recordRef) fail('Usage: get-record <file.crow> <record-id> [--table NAME]')
     const project = await resolveProject(ref)
     const table = resolveTable(project, flags.table)
     output(humanize(table, resolveRecord(table, recordRef), project))
@@ -1080,7 +1020,7 @@ const commands = {
 
   async 'add-record'({ positional, flags }) {
     const [ref, valuesRaw] = positional
-    if (!ref || !valuesRaw) fail('Usage: add-record <project> <values-json> [--table NAME]')
+    if (!ref || !valuesRaw) fail('Usage: add-record <file.crow> <values-json> [--table NAME]')
     const input = parseJsonArg(valuesRaw, 'Values')
     const inputs = Array.isArray(input) ? input : [input]
     const project = await resolveProject(ref)
@@ -1103,7 +1043,7 @@ const commands = {
 
   async 'update-record'({ positional, flags }) {
     const [ref, recordRef, valuesRaw] = positional
-    if (!ref || !recordRef || !valuesRaw) fail('Usage: update-record <project> <record-id> <values-json> [--table NAME]')
+    if (!ref || !recordRef || !valuesRaw) fail('Usage: update-record <file.crow> <record-id> <values-json> [--table NAME]')
     const input = parseJsonArg(valuesRaw, 'Values')
     const project = await resolveProject(ref)
     const table = resolveTable(project, flags.table)
@@ -1122,7 +1062,7 @@ const commands = {
 
   async 'delete-record'({ positional, flags }) {
     const [ref, recordRef] = positional
-    if (!ref || !recordRef) fail('Usage: delete-record <project> <record-id> [--table NAME]')
+    if (!ref || !recordRef) fail('Usage: delete-record <file.crow> <record-id> [--table NAME]')
     const project = await resolveProject(ref)
     const table = resolveTable(project, flags.table)
     const record = resolveRecord(table, recordRef)
@@ -1141,7 +1081,6 @@ const commands = {
 
 async function main() {
   const { positional, flags } = parseArgs(process.argv.slice(2))
-  if (typeof flags['data-dir'] === 'string') process.env.CROW_DIR = flags['data-dir']
   const name = positional.shift()
   if (!name || name === 'help' || flags.help === true) {
     process.stdout.write(HELP)

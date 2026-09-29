@@ -1,18 +1,16 @@
-# The `.crow` file format
+# The `.crow` document format
 
-A `.crow` file is one project — its tables, their schemas, records and views,
-and every image/audio/video/attachment file it owns. It's what **Export…** writes and
-**Import project…** reads.
+A `.crow` document is one Crow database — its tables, their schemas, records
+and views, and every image/audio/video/attachment file it owns. It's what the
+app opens (**File → Open…**) and edits in place.
 
-It's an ordinary **zip archive**: a `project.json` describing the project,
-plus each media file stored as itself. Rename one to `.zip` and any unzip tool
-will open it. Nothing is base64-encoded, so an archive is about the size of the
-files it carries rather than a third larger, and neither end has to hold the
-whole thing in memory.
+It's a **directory** — a package, in macOS terms, so Finder shows it as a
+single file (right-click → **Show Package Contents** to look inside). On other
+platforms it's an ordinary folder whose name ends in `.crow`.
 
 ```
-Reading List.crow
-├── project.json          ← the document below
+Reading List.crow/
+├── data.json             ← the project (below)
 ├── images/
 │   └── 8c1e…-40af.png    ← raw bytes, byte-identical to the original
 ├── audio/
@@ -23,48 +21,39 @@ Reading List.crow
     └── 3f9a…-91bc.pdf
 ```
 
-The folder names inside the archive are exactly the ones the app uses on disk,
-so an archive unzipped by hand drops straight into a project directory.
+The app reads and writes inside the directory directly: each edit replaces
+`data.json` (written beside it, then renamed over it, so it's never half
+written), and adding a file to a cell copies it into the matching media
+folder. There's no separate save step.
 
 This page documents the format well enough to write a generator. If you'd rather
-mutate an existing project than build one from scratch, `cli/crow.mjs` already
+mutate an existing document than build one from scratch, `cli/crow.mjs` already
 speaks a friendlier, name-based dialect — see [cli/README.md](../cli/README.md).
 
-## `project.json`
+## `data.json`
 
-```json
-{
-  "format": "crow-project",
-  "version": 3,
-  "exportedAt": "2026-08-20T09:15:00.000Z",
-  "project": { "…": "see below" }
-}
-```
+`data.json` is the `project` object described below — nothing wraps it.
 
-| Key | Required | Notes |
-| --- | --- | --- |
-| `format` | yes | Must be exactly `"crow-project"`, or the import is refused. |
-| `version` | yes | Format version. The app accepts anything `<= 3` and refuses newer. |
-| `exportedAt` | no | ISO-8601 timestamp; informational only. |
-| `project` | yes | The project itself (below). |
+Opening validates only that `data.json` parses, has a string `name`, and has
+either a `tables` array or (the pre-multi-table shape) array `fields`,
+`records` and `views`. Everything past that is trusted, so a malformed field
+type or a record pointing at a missing field id won't be caught when the
+document is opened — it just renders as empty. Get it right in the generator.
 
-### Older versions
+A project saved before multi-table support put a single table's `fields`,
+`records` and `views` directly on the project. That still opens — it becomes a
+project with one table, named after the project — and is written back in the
+current shape on the next edit.
 
-Versions 1 and 2 were a **single JSON document** rather than an archive, with
-every asset base64'd into an `assets` array inside it. Both still import — the
-app sniffs the first four bytes, and reads anything that isn't a zip that older
-way — but write version 3 in anything new. The rules for `project` are
-unchanged across all three.
+### Older single-file documents
 
-Version 1 additionally put a single table's `fields`, `records` and `views`
-directly on the `project`. Those files still import too — they become a project
-with one table, named after the project.
-
-Import validates only the envelope and that `project` has a string `name` plus
-either a `tables` array or (for version 1) array `fields`, `records`, and
-`views`. Everything past that is trusted, so a malformed field type or a record
-pointing at a missing field id won't be caught at import time — it just renders
-as empty. Get it right in the generator.
+Before documents were packages, a `.crow` was one file: a zip holding a
+`project.json` (the project wrapped as `{ "format": "crow-project", "version":
+3, "project": … }`) plus the media folders, or, in versions 1–2, a single JSON
+document with every asset base64'd into an `assets` array. The app still opens
+both: it converts the file into a package of the same name and keeps the
+original beside it as `<name>.crow.zip`. The CLI refuses them until that's
+happened.
 
 ## `project`
 
@@ -80,11 +69,11 @@ as empty. Get it right in the generator.
 
 | Key | Required | Notes |
 | --- | --- | --- |
-| `id` | yes | Any string matching `^[a-zA-Z0-9-]+$` — a UUID by convention. **Import replaces it** with a fresh id, so pick anything unique; it only has to match the `app-image:///<id>/…` (or `app-audio:///…`, `app-video:///…`, `app-attachment:///…`) urls inside the same file. |
-| `name` | yes | Shown in the sidebar. Trimmed; falls back to `Untitled` if blank. |
+| `id` | yes | Any string matching `^[a-zA-Z0-9-]+$` — a UUID by convention. The app keeps it unless another open document already uses it, in which case that window works under a fresh id (and saves with it). Either way it only has to match the `app-image:///<id>/…` (or `app-audio:///…`, `app-video:///…`, `app-attachment:///…`) urls inside the same document. |
+| `name` | yes | Informational: the app names a document after its `.crow` directory, and writes that name here on the next edit. |
 | `icon` | no | Reserved — carried through saves but not rendered yet. |
-| `createdAt` | yes | ISO-8601. Preserved on import. |
-| `updatedAt` | yes | ISO-8601. Overwritten with the import time. |
+| `createdAt` | yes | ISO-8601. Preserved. |
+| `updatedAt` | yes | ISO-8601. Updated on each edit. |
 | `tables` | yes | The project's tables (below). A project needs at least one; they show as tabs in the app's header, in array order. |
 
 ## `tables`
@@ -112,11 +101,11 @@ record, choice and view ids only have to be unique *within* their own table;
 the only ids that cross a table boundary are a relation field's `tableId` and
 the record ids it stores (see [`relation` fields](#relation-fields) below).
 Media is the other shared thing: images, audio, video and attachments each
-live in their own per-project folder, so any table can use any of them.
+live in the document's own media folders, so any table can use any of them.
 
 Ids for fields, records, choices, tables and views are opaque strings — anything
 unique within the table works. Only the **project** id is constrained by the
-`^[a-zA-Z0-9-]+$` pattern, because it becomes a directory name on disk.
+`^[a-zA-Z0-9-]+$` pattern, because it's part of every media url.
 
 ## `fields`
 
@@ -232,10 +221,8 @@ cell rather than an error. A cell shows each linked record by the text of its
 table's **first field**; that first field can itself be a relation, which
 isn't followed — such a row just reads `Untitled`.
 
-Relations survive export/import: only the project id is rewritten on the way
-in, so record ids — and the links pointing at them — stay as they are. Builds
-of the app older than relation support read such a file without complaint and
-render those cells as empty, which is why the format version stays at 2.
+Relations survive opening and copying: at most the project id is rewritten,
+so record ids — and the links pointing at them — stay as they are.
 
 ## `records`
 
@@ -376,12 +363,10 @@ both filter scopes and includes every category folded into `Other`. Multi-value
 groups list each source record once, even when the plotted count includes it
 in several categories. Drill-down selection is transient and is not saved.
 
-## Assets
+## Media
 
-Every other entry in the archive is a media file, stored **uncompressed and
-byte-identical to the original**. Media is almost always in an already-compressed
-format, so deflating it would cost real time to save almost nothing; storing it
-means what you extract is exactly what was imported.
+Media files live in the document's four media folders, each **byte-identical
+to the file that was added**.
 
 ```
 images/cover.png
@@ -390,18 +375,16 @@ video/9d47…-2c10.mp4
 attachments/3f9a…-91bc.pdf
 ```
 
-- The **folder** decides where the file is restored: `images/`, `audio/`,
-  `video/` or `attachments/`. Any other top-level folder is ignored on import.
-- The **name** must be a bare file name — no nested directories. Names
-  containing `/` or `\`, or starting with `.`, are skipped, so
-  `attachments/../../evil.png` can't escape the project folder. The extension
-  matters (it's what the browser sniffs); the stem doesn't, though the app
-  itself uses UUIDs to avoid collisions.
-- A record references an asset by url, not by path:
+- Only `images/`, `audio/`, `video/` and `attachments/` hold media; anything
+  else in the directory is ignored.
+- The **name** must be a bare file name — no nested directories, and not
+  starting with `.`. The extension matters (it's what the browser sniffs); the
+  stem doesn't, though the app itself uses UUIDs to avoid collisions.
+- A record references a file by url, not by path:
   `app-image:///<projectId>/<name>` (or `app-audio:///…`, `app-video:///…`,
-  `app-attachment:///…`).
-  The `<projectId>` **must match `project.id` in `project.json`**.
-- A `video` value's `poster` is an ordinary entry under `images/`, not under
+  `app-attachment:///…`), where `<name>` is the file in the matching folder.
+  The `<projectId>` **must match `id` in `data.json`**.
+- A `video` value's `poster` is an ordinary file under `images/`, not under
   `video/` — it's a still, and every view that features it treats it as any
   other image.
 - For attachments specifically, the name in `attachments/` is the generated
@@ -410,95 +393,93 @@ attachments/3f9a…-91bc.pdf
   (see the `fields` table above), which is why that value carries a `name` of
   its own.
 
-Assets that nothing references are still imported — harmless, and it means an
-export never silently drops a file.
+Files nothing references any more are deleted when the document's window
+closes — not sooner, since an undo while it's open can bring a removed file
+back. Files younger than a minute are always left alone, so a script can copy
+a file in before it writes the `data.json` that points at it.
 
-## What import changes
+## What opening a document does
 
-Given an archive, the app:
+The app keeps `id` as it is — unless another open window already uses it (two
+copies of one document, say). Then the copy gets a fresh id, and every
+`app-image:///<oldId>/`, `app-audio:///<oldId>/`, `app-video:///<oldId>/` and
+`app-attachment:///<oldId>/` prefix in its `data.json` is rewritten to match
+and saved. External `http(s)` urls are left alone.
 
-1. Generates a **new project id**, so importing the same file twice yields two
-   independent projects instead of overwriting the first.
-2. Rewrites every `app-image:///<oldId>/`, `app-audio:///<oldId>/`,
-   `app-video:///<oldId>/` and `app-attachment:///<oldId>/` prefix in the
-   project to the new id. External `http(s)` urls are left alone.
-3. Writes each asset to
-   `<dataDir>/projects/<newId>/images|audio|video|attachments/<name>`.
-4. Sets `updatedAt` to now, keeps `createdAt`.
+While a document is open, the app watches its `data.json`: if something else
+replaces it — the CLI, say — the window reloads it.
 
-`project.json` is read on its own pass before any of that, since entry order in
-an archive is up to whoever wrote it and the assets can't be filed until the new
-id is known.
+Because of the id rule, the id you use while generating is arbitrary — it just
+has to be internally consistent with your media urls.
 
-Because of step 2, the project id you use while generating is arbitrary — it
-just has to be internally consistent with your asset urls.
+## A complete minimal document
 
-## A complete minimal file
-
-Valid, importable, and about as small as a useful project gets. A project with
-no media has nothing to put in an archive, so this is the version 1 single-
-document form — still accepted, and the easiest thing to hand-write:
+Valid, openable, and about as small as a useful document gets: a directory
+named `Reading List.crow` holding just this `data.json` (no media, so no media
+folders):
 
 ```json
 {
-  "format": "crow-project",
-  "version": 1,
-  "project": {
-    "id": "generated-import",
-    "name": "Reading List",
-    "createdAt": "2026-08-20T09:00:00.000Z",
-    "updatedAt": "2026-08-20T09:00:00.000Z",
-    "fields": [
-      { "id": "fld-title", "name": "Title", "type": "text" },
-      {
-        "id": "fld-status",
-        "name": "Status",
-        "type": "select",
-        "options": {
-          "choices": [
-            { "id": "ch-todo", "name": "Todo", "color": "gray" },
-            { "id": "ch-done", "name": "Done", "color": "green" }
-          ]
+  "id": "generated",
+  "name": "Reading List",
+  "createdAt": "2026-08-20T09:00:00.000Z",
+  "updatedAt": "2026-08-20T09:00:00.000Z",
+  "tables": [
+    {
+      "id": "tbl-books",
+      "name": "Books",
+      "fields": [
+        { "id": "fld-title", "name": "Title", "type": "text" },
+        {
+          "id": "fld-status",
+          "name": "Status",
+          "type": "select",
+          "options": {
+            "choices": [
+              { "id": "ch-todo", "name": "Todo", "color": "gray" },
+              { "id": "ch-done", "name": "Done", "color": "green" }
+            ]
+          }
         }
-      }
-    ],
-    "records": [
-      {
-        "id": "rec-1",
-        "createdAt": "2026-08-20T09:00:00.000Z",
-        "values": { "fld-title": "The Dispossessed", "fld-status": "ch-todo" }
-      }
-    ],
-    "views": [
-      {
-        "id": "vw-table",
-        "name": "Table",
-        "type": "table",
-        "config": { "hiddenFieldIds": [], "filters": [], "sorts": [], "rowHeight": "short" }
-      },
-      {
-        "id": "vw-board",
-        "name": "Board",
-        "type": "kanban",
-        "config": { "groupByFieldId": "fld-status", "hiddenFieldIds": [] }
-      }
-    ]
-  },
-  "assets": []
+      ],
+      "records": [
+        {
+          "id": "rec-1",
+          "createdAt": "2026-08-20T09:00:00.000Z",
+          "values": { "fld-title": "The Dispossessed", "fld-status": "ch-todo" }
+        }
+      ],
+      "views": [
+        {
+          "id": "vw-table",
+          "name": "Table",
+          "type": "table",
+          "config": { "hiddenFieldIds": [], "filters": [], "sorts": [], "rowHeight": "short" }
+        },
+        {
+          "id": "vw-board",
+          "name": "Board",
+          "type": "kanban",
+          "config": { "groupByFieldId": "fld-status", "hiddenFieldIds": [] }
+        }
+      ]
+    }
+  ]
 }
 ```
 
 ## Generating one in Node
 
-Build the `project` object, then zip it up with the files it references. This
-turns a CSV-ish array into a project with a select field and one local image
-(`fflate` here, but any zip library will do):
+Build the project, write it as `data.json`, and copy in the files it
+references. This turns a CSV-ish array into a document with a select field and
+one local image — no libraries needed:
 
 ```js
 import { randomUUID } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
-import { zipSync } from 'fflate'
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
+const dir = 'Reading List.crow'
 const projectId = randomUUID()
 const now = new Date().toISOString()
 
@@ -520,73 +501,65 @@ const titleField = { id: randomUUID(), name: 'Title', type: 'text' }
 const statusField = { id: randomUUID(), name: 'Status', type: 'select', options: { choices } }
 const coverField = { id: randomUUID(), name: 'Cover', type: 'image' }
 
-const manifest = {
-  format: 'crow-project',
-  version: 3,
-  exportedAt: now,
-  project: {
-    id: projectId,
-    name: 'Reading List',
-    createdAt: now,
-    updatedAt: now,
-    fields: [titleField, statusField, coverField],
-    records: rows.map((row) => ({
+const project = {
+  id: projectId,
+  name: 'Reading List',
+  createdAt: now,
+  updatedAt: now,
+  tables: [
+    {
       id: randomUUID(),
-      createdAt: now,
-      values: {
-        [titleField.id]: row.title,
-        [statusField.id]: choiceId[row.status],
-        // Points at the asset below; the app remaps the id half on import.
-        [coverField.id]: `app-image:///${projectId}/cover.png`
-      }
-    })),
-    views: [
-      {
+      name: 'Books',
+      fields: [titleField, statusField, coverField],
+      records: rows.map((row) => ({
         id: randomUUID(),
-        name: 'Table',
-        type: 'table',
-        config: { hiddenFieldIds: [], filters: [], sorts: [], rowHeight: 'short' }
-      },
-      {
-        id: randomUUID(),
-        name: 'Board',
-        type: 'kanban',
-        config: { groupByFieldId: statusField.id, hiddenFieldIds: [] }
-      }
-    ]
-  }
+        createdAt: now,
+        values: {
+          [titleField.id]: row.title,
+          [statusField.id]: choiceId[row.status],
+          // Points at images/cover.png below; must use the same id as project.id.
+          [coverField.id]: `app-image:///${projectId}/cover.png`
+        }
+      })),
+      views: [
+        {
+          id: randomUUID(),
+          name: 'Table',
+          type: 'table',
+          config: { hiddenFieldIds: [], filters: [], sorts: [], rowHeight: 'short' }
+        },
+        {
+          id: randomUUID(),
+          name: 'Board',
+          type: 'kanban',
+          config: { groupByFieldId: statusField.id, hiddenFieldIds: [] }
+        }
+      ]
+    }
+  ]
 }
 
-// Assets go in uncompressed (level 0) — they're already-compressed formats, and
-// storing them keeps the extracted bytes identical to the originals.
-const archive = zipSync({
-  'project.json': new TextEncoder().encode(JSON.stringify(manifest, null, 2)),
-  'images/cover.png': [readFileSync('cover.png'), { level: 0 }]
-})
-
-writeFileSync('reading-list.crow', archive)
+mkdirSync(join(dir, 'images'), { recursive: true })
+copyFileSync('cover.png', join(dir, 'images', 'cover.png'))
+writeFileSync(join(dir, 'data.json'), JSON.stringify(project, null, 2))
 ```
 
-Then open the app and use **+ → Import project…**, or drop the same
-`project` object (without the envelope) straight into
-`<dataDir>/projects/<id>/data.json` — that's the on-disk format, and the file
-watcher picks up outside writes live.
+Then double-click `Reading List.crow`, or open it with **File → Open…**.
 
-## Checklist before importing
+## Checklist before opening
 
-- `format` is `"crow-project"` and `version` is `3` (or `1`/`2` for the older
-  single-document form, in which case the file is JSON rather than an archive).
-- If it's an archive: `project.json` is at the root, and every other entry sits
-  under `images/`, `audio/`, `video/` or `attachments/`.
-- `project.id` matches `^[a-zA-Z0-9-]+$` and matches every `app-*:///<id>/` url.
+- The document is a directory whose name ends in `.crow`, with `data.json` at
+  its top level and media under `images/`, `audio/`, `video/` or `attachments/`.
+- `id` in `data.json` matches `^[a-zA-Z0-9-]+$` and matches every `app-*:///<id>/` url.
 - Every `values` key is a field **id** that exists in `fields`.
 - Every `select`/`multiSelect` value is a choice **id**, not a name; multiSelect
   values are arrays even when there's one choice.
-- Every `relation` field has `relation.tableId` naming a table in the same file,
+- Every `relation` field has `relation.tableId` naming a table in the same document,
   and its values are arrays of record ids from that table — arrays even when
   the field isn't `multiple`.
 - Every `attachment` value is an array of `{ url, name }` objects (even for one
-  file), and each `url`'s asset `kind` is `attachment`, not `image`/`audio`.
+  file), each `url` an `app-attachment:///` one whose file sits under
+  `attachments/`.
 - Every `video` value is a single `{ url }` object — not a bare url string —
   whose file sits under `video/`, and whose `poster`, if it has one, sits under
   `images/`.

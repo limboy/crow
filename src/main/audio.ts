@@ -18,7 +18,11 @@ function audioPath(url: string): string | null {
   const [projectId, rawName] = decodeURIComponent(parsed.pathname).split('/').filter(Boolean)
   const name = rawName ? basename(rawName) : ''
   if (!projectId || !SAFE_ID.test(projectId) || !name || name.startsWith('.')) return null
-  return join(audioDir(projectId), name)
+  try {
+    return join(audioDir(projectId), name)
+  } catch {
+    return null // not an open document
+  }
 }
 
 
@@ -70,7 +74,7 @@ export async function importAudioData(
   }
 }
 
-// Serves <dataDir>/<projectId>/audio/<name> as app-audio:///<projectId>/<name>
+// Serves <document>.crow/audio/<name> as app-audio:///<projectId>/<name>
 // so the renderer can play locally stored audio without loosening webSecurity.
 export function registerAudioProtocol(): void {
   protocol.handle('app-audio', (request) => {
