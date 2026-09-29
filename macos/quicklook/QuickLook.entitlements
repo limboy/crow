@@ -6,5 +6,8 @@
 	<true/>
 	<key>com.apple.security.files.user-selected.read-only</key>
 	<true/>
+	<!-- WKWebView's content process won't start in a sandboxed Quick Look preview without it. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 </dict>
 </plist>

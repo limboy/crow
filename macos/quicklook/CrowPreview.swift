@@ -1,6 +1,6 @@
 // The summary of a .crow document both Quick Look extensions show: its
 // counts, size and dates, then each table's fields and first few records.
-// The space-bar preview renders it as HTML (below); the thumbnail draws the
+// The preview renders it as interactive HTML (below); the thumbnail draws the
 // same layout natively, since WebKit can't run in a thumbnail extension.
 import Foundation
 
@@ -9,6 +9,8 @@ struct CrowPreview {
   static let pageSize = CGSize(width: 820, height: 640)
   static let sampleRows = 8
   static let sampleColumns = 6
+  /// The preview scrolls, so it shows every field and more records.
+  static let previewRows = 200
 
   enum Cell {
     case text(String)
@@ -31,7 +33,7 @@ struct CrowPreview {
   let meta: [(String, String)]?
   let tables: [Table]
 
-  init(url: URL) throws {
+  init(url: URL, rows: Int = sampleRows, columns: Int = sampleColumns) throws {
     let doc = try CrowDocument(url: url)
     title = doc.title
     guard let project = doc.project else {
@@ -47,19 +49,19 @@ struct CrowPreview {
     if let d = Self.date(project["createdAt"]) { meta.append(("Created", d)) }
     if let d = Self.date(project["updatedAt"]) { meta.append(("Modified", d)) }
     self.meta = meta
-    tables = doc.tables.map(Self.table)
+    tables = doc.tables.map { Self.table($0, rows: rows, columns: columns) }
   }
 
-  static func table(_ table: [String: Any]) -> Table {
+  static func table(_ table: [String: Any], rows: Int, columns: Int) -> Table {
     let fields = (table["fields"] as? [[String: Any]]) ?? []
     let records = (table["records"] as? [[String: Any]]) ?? []
-    let shown = fields.prefix(sampleColumns)
+    let shown = fields.prefix(columns)
     return Table(
       name: table["name"] as? String ?? "Untitled",
       recordCount: records.count,
       fields: fields.map { ($0["name"] as? String ?? "", $0["type"] as? String ?? "") },
       columns: shown.map { $0["name"] as? String ?? "" },
-      rows: records.prefix(sampleRows).map { r in
+      rows: records.prefix(rows).map { r in
         let values = r["values"] as? [String: Any] ?? [:]
         return shown.map { cell(values[$0["id"] as? String ?? ""], field: $0, record: r) }
       }
@@ -117,24 +119,27 @@ struct CrowPreview {
     } else {
       body += "<p class=note>\(esc(Self.legacyNote))</p>"
     }
+    if tables.contains(where: { !$0.rows.isEmpty }) {
+      body += "<input id=filter type=search placeholder=\"Filter records\" autocomplete=off>"
+    }
     for t in tables {
-      body += "<section><h2>\(esc(t.name))<span>\(t.recordCount.formatted()) records · \(t.fields.count) fields</span></h2>"
+      body += "<details open><summary><h2>\(esc(t.name))<span>\(t.recordCount.formatted()) records · \(t.fields.count) fields</span></h2></summary>"
       body += "<div class=fields>"
       for f in t.fields { body += "<span class=chip>\(esc(f.name))<small>\(esc(f.type))</small></span>" }
       body += "</div>"
       if !t.rows.isEmpty, !t.columns.isEmpty {
-        body += "<table><thead><tr>" + t.columns.map { "<th>\(esc($0))</th>" }.joined() + "</tr></thead><tbody>"
+        body += "<div class=scroll><table><thead><tr>" + t.columns.map { "<th>\(esc($0))</th>" }.joined() + "</tr></thead><tbody>"
         for row in t.rows { body += "<tr>" + row.map { "<td>\(html($0))</td>" }.joined() + "</tr>" }
-        body += "</tbody></table>"
+        body += "</tbody></table></div><p class=\"more none\" hidden>No matching records.</p>"
       }
       if t.recordCount > t.rows.count {
         body += "<p class=more>and \((t.recordCount - t.rows.count).formatted()) more…</p>"
       }
-      body += "</section>"
+      body += "</details>"
     }
     return """
     <!doctype html><html><head><meta charset="utf-8"><style>\(css)</style></head>
-    <body><header><h1>\(esc(title))</h1><p>Crow Document</p></header>\(body)</body></html>
+    <body><header><h1>\(esc(title))</h1><p>Crow Document</p></header>\(body)<script>\(script)</script></body></html>
     """
   }
 
@@ -164,19 +169,44 @@ header p { margin: 2px 0 0; color: var(--muted); }
 .meta { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 18px 0 8px; padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .meta dt { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .meta dd { margin: 2px 0 0; font-weight: 500; font-variant-numeric: tabular-nums; }
-section { margin-top: 24px; }
+#filter { width: 100%; margin: 16px 0 0; padding: 6px 10px; font: inherit; color: var(--fg); background: var(--chip); border: 1px solid var(--line); border-radius: 7px; outline: none; }
+#filter:focus { border-color: #007aff; }
+details { margin-top: 24px; }
+summary { list-style: none; cursor: default; }
+summary::-webkit-details-marker { display: none; }
+summary h2::before { content: "›"; display: inline-block; width: 10px; color: var(--muted); transition: transform .15s; }
+details[open] summary h2::before { transform: rotate(90deg); }
 h2 { font-size: 15px; font-weight: 600; margin: 0 0 8px; display: flex; align-items: baseline; gap: 10px; }
 h2 span { font-size: 12px; font-weight: 400; color: var(--muted); }
 .fields { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .chip { background: var(--chip); border-radius: 6px; padding: 3px 8px; }
 .chip small { color: var(--muted); margin-left: 6px; }
-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-th { color: var(--muted); font-weight: 500; font-size: 12px; }
+.scroll { overflow: auto; max-height: 420px; }
+table { min-width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; position: sticky; top: 0; background: var(--bg); }
+tbody tr:hover { background: var(--chip); }
 .more, .note { color: var(--muted); margin: 8px 0 0; }
 .media { color: var(--muted); }
 .tag { display: inline-block; border-radius: 4px; padding: 1px 6px; font-size: 12px; background: var(--chip); }
 .red { background: #ff3b3026; } .orange { background: #ff950026; } .amber { background: #ffcc0033; }
 .green { background: #34c75926; } .teal { background: #30b0c726; } .blue { background: #007aff26; }
 .indigo { background: #5856d626; } .purple { background: #af52de26; } .pink { background: #ff2d5526; }
+"""
+
+// Filters every table's rows by the search box.
+private let script = """
+const filter = document.getElementById('filter');
+filter?.addEventListener('input', () => {
+  const q = filter.value.trim().toLowerCase();
+  for (const table of document.querySelectorAll('table')) {
+    let shown = 0;
+    for (const row of table.tBodies[0].rows) {
+      const match = !q || row.textContent.toLowerCase().includes(q);
+      row.hidden = !match;
+      if (match) shown++;
+    }
+    table.parentElement.nextElementSibling.hidden = shown > 0;
+  }
+});
 """

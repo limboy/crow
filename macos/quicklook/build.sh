@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds the Quick Look extensions into out/quicklook/:
-#   CrowQuickLook.appex — the space-bar preview (Preview/)
+#   CrowQuickLook.appex — the space-bar and Finder preview-pane preview (Preview/)
 #   CrowThumbnail.appex — Finder's thumbnail (Thumbnail/)
 # electron-builder copies them into Crow.app/Contents/PlugIns (see extraFiles
 # in electron-builder.yml) and macos/sign.cjs signs them with the app's
