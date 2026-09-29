@@ -29,6 +29,8 @@ jobs:
 
       - run: npm run build
 
+      - run: npm run build:quicklook
+
       # electron-builder's mac target list (dmg + zip) each try to get-or-create the
       # GitHub release for this tag when publishing, and those two calls can race —
       # both see "no release yet" and each create one, leaving two releases for the

@@ -7,6 +7,7 @@ files:
   - out/**/*
   - package.json
   - '!**/.vscode/*'
+  - '!out/quicklook/**'
   - '!src/*'
   - '!cli/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
@@ -29,6 +30,9 @@ fileAssociations:
     description: Crow Document
     role: Editor
     isPackage: true
+    # build/document.icns — the app artwork as a rounded icon; regenerate with
+    # `swift macos/make-document-icon.swift`.
+    icon: document
 # GitHub is the update feed for electron-updater (added later): each publish
 # uploads latest-mac.yml alongside the zip, which is what autoUpdater polls.
 publish:
@@ -47,10 +51,17 @@ mac:
       arch: [arm64]
   category: public.app-category.productivity
   icon: build/icon.icns
+  # Quick Look preview for .crow documents (macos/quicklook), built by
+  # `npm run build:quicklook`. macos/sign.cjs signs it before the app.
+  extraFiles:
+    - from: out/quicklook/CrowQuickLook.appex
+      to: PlugIns/CrowQuickLook.appex
+  sign: macos/sign.cjs
   extendInfo:
     UTExportedTypeDeclarations:
       - UTTypeIdentifier: me.limboy.crow.document
         UTTypeDescription: Crow Document
+        UTTypeIconFile: document.icns
         UTTypeConformsTo:
           - com.apple.package
           - public.composite-content
