@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron'
 import { installCli } from './cli'
+import { checkForUpdatesManually } from './updater'
 import {
   clearRecentDocuments,
   getRecentDocuments,
@@ -12,8 +13,9 @@ import {
 
 /**
  * Application menu supporting macOS, Windows, and Linux:
- * - macOS: App menu (with "Install 'crow' Command in PATH"), File, Edit, View, Window
- * - Windows / Linux: File, Edit, View, Window
+ * - macOS: App menu (with "Check for Updates…" and "Install 'crow' Command in
+ *   PATH"), File, Edit, View, Window
+ * - Windows / Linux: File, Edit, View, Window, Help (with "Check for Updates…")
  *
  * File works on documents: New… / Open… / Open Recent, Save / Save As… for the
  * focused one. Rebuild it (via `refreshAppMenu`) whenever the recent list changes.
@@ -22,6 +24,10 @@ export function buildAppMenu(): Menu {
   const isMac = process.platform === 'darwin'
   const focused = (): BrowserWindow | null => BrowserWindow.getFocusedWindow()
   const recent = getRecentDocuments()
+  const checkForUpdatesItem: MenuItemConstructorOptions = {
+    label: 'Check for Updates…',
+    click: () => void checkForUpdatesManually()
+  }
 
   const template: MenuItemConstructorOptions[] = [
     ...(isMac
@@ -30,6 +36,7 @@ export function buildAppMenu(): Menu {
             label: app.name,
             submenu: [
               { role: 'about' as const },
+              checkForUpdatesItem,
               { type: 'separator' as const },
               {
                 label: "Install 'crow' Command in PATH",
@@ -95,7 +102,9 @@ export function buildAppMenu(): Menu {
     },
     { role: 'editMenu' as const },
     { role: 'viewMenu' as const },
-    { role: 'windowMenu' as const }
+    { role: 'windowMenu' as const },
+    // macOS keeps it in the app menu; elsewhere it goes where apps usually put it.
+    ...(isMac ? [] : [{ role: 'help' as const, submenu: [checkForUpdatesItem] }])
   ]
   return Menu.buildFromTemplate(template)
 }
