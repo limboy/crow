@@ -105,6 +105,25 @@ export function useUpdateProject(id: string): ProjectUpdater {
   )
 }
 
+/**
+ * Applies a change the app makes on its own behalf rather than the user's —
+ * filling in something derived, like a video's cover frame. It's saved like
+ * any edit but leaves no undo step and no modification time: undoing it would
+ * only have it done again, and nobody changed the record.
+ */
+export function useAmendProject(id: string): (updater: (project: Project) => Project) => void {
+  const queryClient = useQueryClient()
+  return useCallback(
+    (updater: (project: Project) => Project) => {
+      const current = queryClient.getQueryData<Project>(['project', id])
+      if (!current) return
+      const updated = updater(current)
+      if (updated !== current) commitProject(queryClient, id, updated)
+    },
+    [id, queryClient]
+  )
+}
+
 export interface ProjectHistory {
   undo: () => void
   redo: () => void

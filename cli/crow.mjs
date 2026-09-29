@@ -838,8 +838,8 @@ VALUE FORMATS (per field type, when writing)
   video         path to a local video file (copied into the document), or an
                 existing app-video:/// URL. Read back as {url,name,poster}. The cover
                 frame is captured a quarter of the way in by the app, which owns the
-                only decoder — a video added here shows a placeholder until the app's
-                Capture cover button fills it in. Pass the {url,name,poster} object
+                only decoder — a video added here gets its cover the next time the
+                document is open in the app. Pass the {url,name,poster} object
                 back to move an existing video between records without losing it.
   createdTime, lastModifiedTime
                 read-only — the app keeps them from the record itself, and writing to

@@ -46,6 +46,7 @@ import { applyFilters, applySorts } from '@/lib/derive'
 import { ProjectTablesContext, useProjectTables } from '@/lib/relations'
 import {
   renameCachedProject,
+  useAmendProject,
   useProject,
   useProjectHistory,
   useUpdateProject,
@@ -55,6 +56,7 @@ import {
   type TableUpdater
 } from '@/lib/queries'
 import { isMac } from '@/lib/format'
+import { useVideoPosterBackfill } from '@/lib/videoPoster'
 import { cn, isTextEntry } from '@/lib/utils'
 
 export const VIEW_ICONS: Record<ViewType, LucideIcon> = {
@@ -89,6 +91,9 @@ export default function ProjectPage(): React.JSX.Element {
   const updateProject = useUpdateProject(id)
   const history = useProjectHistory(id)
   useUndoRedoShortcuts(history)
+  // Videos the CLI added come without a cover; the app is what can decode one.
+  const amendProject = useAmendProject(id)
+  useVideoPosterBackfill(id, project, amendProject)
 
   const [activeTableId, setActiveTableId] = useState<string>()
   // Remembered per table, so switching tables and coming back lands on the

@@ -9,7 +9,9 @@
  * alongside real image fields.
  */
 
-import type { VideoValue } from '@shared/types'
+import { useEffect } from 'react'
+import type { Project, VideoValue } from '@shared/types'
+import { videoFrom } from '@/lib/fields'
 
 /** How far into the video the cover frame is taken from. A quarter in is past
  *  the title card or fade-in that makes the opening frames useless as a
@@ -118,4 +120,89 @@ export async function importVideoValue(
   const url = await window.api.importVideoData(projectId, name, data)
   if (!url) return null
   return { url, name, poster: await captureVideoPoster(projectId, url) }
+}
+
+/** Stored videos in the project that have no cover yet — what the CLI adds,
+ *  since it has no decoder to capture one with. External urls are left to
+ *  the editor, which captures as the url is entered. */
+function videosWithoutPoster(project: Project): Set<string> {
+  const urls = new Set<string>()
+  for (const table of project.tables) {
+    const videoFields = table.fields.filter((f) => f.type === 'video')
+    if (videoFields.length === 0) continue
+    for (const record of table.records) {
+      for (const field of videoFields) {
+        const video = videoFrom(record.values[field.id])
+        if (video && !video.poster && video.url.startsWith('app-video:')) urls.add(video.url)
+      }
+    }
+  }
+  return urls
+}
+
+/** Gives every cell holding one of these videos its cover. Returns the same
+ *  project when none of them needed it, so nothing gets saved. */
+function withPosters(project: Project, posters: Map<string, string>): Project {
+  let changed = false
+  const tables = project.tables.map((table) => {
+    const videoFields = table.fields.filter((f) => f.type === 'video')
+    if (videoFields.length === 0) return table
+    let tableChanged = false
+    const records = table.records.map((record) => {
+      let values = record.values
+      for (const field of videoFields) {
+        const video = videoFrom(values[field.id])
+        const poster = video && !video.poster ? posters.get(video.url) : undefined
+        if (!video || !poster) continue
+        values = { ...values, [field.id]: { ...video, poster } }
+      }
+      if (values === record.values) return record
+      tableChanged = true
+      return { ...record, values }
+    })
+    if (!tableChanged) return table
+    changed = true
+    return { ...table, records }
+  })
+  return changed ? { ...project, tables } : project
+}
+
+/** Every capture this session, keyed by project and video url: the poster's
+ *  url, or null when the video couldn't be decoded — so it isn't retried on
+ *  every change, and a cover lost to undo comes back without decoding again. */
+const captured = new Map<string, string | null>()
+/** One capture at a time: a CLI import of a dozen videos shouldn't have a
+ *  dozen decoders seeking at once. */
+let queue: Promise<void> = Promise.resolve()
+
+/**
+ * Captures the cover of any stored video that arrived without one — added by
+ * the CLI, or by an older version of the app — whenever the project changes.
+ * `amend` applies it without an undo step; see useAmendProject.
+ */
+export function useVideoPosterBackfill(
+  projectId: string,
+  project: Project | undefined,
+  amend: (updater: (project: Project) => Project) => void
+): void {
+  useEffect(() => {
+    if (!project) return
+    const known = new Map<string, string>()
+    for (const url of videosWithoutPoster(project)) {
+      const key = `${projectId}\n${url}`
+      if (captured.has(key)) {
+        const poster = captured.get(key)
+        if (poster) known.set(url, poster)
+        continue
+      }
+      captured.set(key, null) // claimed; also what a failure leaves behind
+      queue = queue.then(async () => {
+        const poster = await captureVideoPoster(projectId, url)
+        if (!poster) return
+        captured.set(key, poster)
+        amend((latest) => withPosters(latest, new Map([[url, poster]])))
+      })
+    }
+    if (known.size > 0) amend((latest) => withPosters(latest, known))
+  }, [projectId, project, amend])
 }

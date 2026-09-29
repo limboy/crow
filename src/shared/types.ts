@@ -95,7 +95,8 @@ export interface AttachmentValue {
  *  cell shows is `poster`, a still grabbed a quarter of the way in and stored
  *  as an ordinary image asset. Both `name` (the original file name) and
  *  `poster` are absent until something produces them — a url typed by hand or
- *  a video added by the CLI has neither. */
+ *  a video added by the CLI has neither, though the app captures a stored
+ *  video's cover as soon as it has the document open. */
 export interface VideoValue {
   url: string
   name?: string
