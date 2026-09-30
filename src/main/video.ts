@@ -1,12 +1,11 @@
-import { dialog, net, protocol, shell, type BrowserWindow } from 'electron'
-import { createReadStream, promises as fs } from 'fs'
-import { Readable } from 'stream'
+import { dialog, protocol, shell, type BrowserWindow } from 'electron'
+import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
-import { pathToFileURL } from 'url'
 import { randomUUID } from 'crypto'
 import type { VideoValue } from '@shared/types'
 import { projectDir, SAFE_ID } from './storage'
 import { saveMediaAs } from './saveMedia'
+import { serveRangedFile } from './rangedFile'
 
 export const videoDir = (projectId: string): string => join(projectDir(projectId), 'video')
 function videoPath(url: string): string | null {
@@ -120,59 +119,17 @@ const CONTENT_TYPES: Record<string, string> = {
   '.avi': 'video/x-msvideo'
 }
 
-/** `bytes=<start>-<end>`, the only form Chromium's media pipeline sends. */
-function parseRange(header: string | null, size: number): { start: number; end: number } | null {
-  const match = header && /^bytes=(\d*)-(\d*)$/.exec(header.trim())
-  if (!match) return null
-  const [, rawStart, rawEnd] = match
-  if (rawStart === '' && rawEnd === '') return null
-  // A suffix range (`bytes=-500`) asks for the last N bytes.
-  const start = rawStart === '' ? Math.max(0, size - Number(rawEnd)) : Number(rawStart)
-  const end = rawStart === '' || rawEnd === '' ? size - 1 : Math.min(Number(rawEnd), size - 1)
-  if (!Number.isFinite(start) || start > end || start >= size) return null
-  return { start, end }
-}
-
 // Serves <document>.crow/video/<name> as app-video:///<projectId>/<name>.
-// Unlike images and audio this answers range requests itself rather than
-// deferring to net.fetch: a poster is captured a quarter of the way into the
+// Like audio this answers range requests itself rather than deferring to
+// net.fetch: a poster is captured a quarter of the way into the
 // file, and without ranges the renderer would have to pull everything before
 // that point through memory just to seek there.
 export function registerVideoProtocol(): void {
-  protocol.handle('app-video', async (request) => {
+  protocol.handle('app-video', (request) => {
     const path = videoPath(request.url)
     if (!path) return new Response(null, { status: 400 })
-    let size: number
-    try {
-      size = (await fs.stat(path)).size
-    } catch {
-      return net.fetch(pathToFileURL(path).toString()) // let it produce the 404
-    }
-    const type = CONTENT_TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream'
-    const range = parseRange(request.headers.get('range'), size)
-    if (!range) {
-      return new Response(Readable.toWeb(createReadStream(path)) as ReadableStream, {
-        status: 200,
-        headers: {
-          'content-type': type,
-          'accept-ranges': 'bytes',
-          'content-length': String(size),
-          // Lets the renderer read the frames back out of a canvas; see the
-          // scheme's `corsEnabled` privilege in index.ts.
-          'access-control-allow-origin': '*'
-        }
-      })
-    }
-    const stream = createReadStream(path, { start: range.start, end: range.end })
-    return new Response(Readable.toWeb(stream) as ReadableStream, {
-      status: 206,
-      headers: {
-        'content-type': type,
-        'accept-ranges': 'bytes',
-        'content-length': String(range.end - range.start + 1),
-        'content-range': `bytes ${range.start}-${range.end}/${size}`,
-        'access-control-allow-origin': '*'
-      }
-    })
+    // Lets the renderer read the frames back out of a canvas; see the
+    // scheme's `corsEnabled` privilege in index.ts.
+    return serveRangedFile(request, path, CONTENT_TYPES, { 'access-control-allow-origin': '*' })
   })
 }

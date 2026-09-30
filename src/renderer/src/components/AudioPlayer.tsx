@@ -159,6 +159,11 @@ export function AudioPlayer({
   playback?: AudioPlayback
 }): React.JSX.Element {
   const audioRef = useRef<HTMLAudioElement>(null)
+  // The clip, fetched whole, once this player first needs more than its
+  // metadata. Chromium can't resume or seek an `app-audio:` load mid-file (a
+  // custom scheme's range responses are rejected, so the element errors a
+  // moment after play starts), but a blob is served by Chromium itself.
+  const blobRef = useRef<{ src: string; url?: string; pending?: Promise<void> } | null>(null)
   const [playing, setPlaying] = useState(false)
   const [duration, setDuration] = useState(0)
   const [current, setCurrent] = useState(0)
@@ -168,14 +173,42 @@ export function AudioPlayer({
     setPlaying(false)
     setDuration(0)
     setCurrent(0)
+    return () => {
+      if (blobRef.current?.url) URL.revokeObjectURL(blobRef.current.url)
+      blobRef.current = null
+    }
   }, [src])
+
+  /** Swaps the element over to a blob of the whole clip, keeping its place. */
+  const loadWhole = (audio: HTMLAudioElement): Promise<void> => {
+    const loaded = blobRef.current
+    if (loaded?.src === src) return loaded.url ? Promise.resolve() : loaded.pending!
+    const entry: { src: string; url?: string; pending?: Promise<void> } = { src }
+    blobRef.current = entry
+    entry.pending = fetch(src)
+      .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
+      .then((blob) => {
+        if (blobRef.current !== entry) return // src changed or unmounted meanwhile
+        entry.url = URL.createObjectURL(blob)
+        const at = audio.currentTime
+        audio.src = entry.url
+        if (at) audio.currentTime = at
+      })
+      .catch(() => {
+        // Fall back to the streamed source; forget the attempt so the next
+        // play tries again.
+        if (blobRef.current === entry) blobRef.current = null
+      })
+    return entry.pending
+  }
+
   // The view asked for this cell: start it, whether it was already on screen
   // or has just been scrolled into the window for this very purpose.
   const autoPlayToken = playback?.autoPlayToken
   useEffect(() => {
     if (autoPlayToken === undefined) return
     const audio = audioRef.current
-    if (audio) playFromStart(audio)
+    if (audio) void loadWhole(audio).then(() => playFromStart(audio))
   }, [autoPlayToken])
 
   // Don't leave a dangling reference behind when this player unmounts (e.g.
@@ -199,12 +232,14 @@ export function AudioPlayer({
       if (audio.error || audio.networkState === audio.NETWORK_NO_SOURCE) {
         audio.load()
       }
-      audio.play().catch(() => {
-        // play() was rejected (e.g. AbortError from a rapid pause, or a
-        // genuine load failure) — reflect that we're not playing instead of
-        // leaving the button stuck showing "playing".
-        setPlaying(false)
-      })
+      void loadWhole(audio).then(() =>
+        audio.play().catch(() => {
+          // play() was rejected (e.g. AbortError from a rapid pause, or a
+          // genuine load failure) — reflect that we're not playing instead of
+          // leaving the button stuck showing "playing".
+          setPlaying(false)
+        })
+      )
     } else {
       audio.pause()
     }
@@ -215,8 +250,11 @@ export function AudioPlayer({
     if (!audio || !duration) return
     const rect = e.currentTarget.getBoundingClientRect()
     const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
-    audio.currentTime = ratio * duration
-    setCurrent(ratio * duration)
+    const at = ratio * duration
+    setCurrent(at)
+    void loadWhole(audio).then(() => {
+      audio.currentTime = at
+    })
   }
 
   const progress = duration > 0 ? current / duration : 0

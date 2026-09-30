@@ -1,10 +1,10 @@
-import { dialog, net, protocol, type BrowserWindow } from 'electron'
+import { dialog, protocol, type BrowserWindow } from 'electron'
 import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
-import { pathToFileURL } from 'url'
 import { randomUUID } from 'crypto'
 import { projectDir, SAFE_ID } from './storage'
 import { saveMediaAs } from './saveMedia'
+import { serveRangedFile } from './rangedFile'
 
 export const audioDir = (projectId: string): string => join(projectDir(projectId), 'audio')
 function audioPath(url: string): string | null {
@@ -74,12 +74,27 @@ export async function importAudioData(
   }
 }
 
+/** Content types for the extensions the picker offers. */
+const CONTENT_TYPES: Record<string, string> = {
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.oga': 'audio/ogg',
+  '.opus': 'audio/ogg',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.flac': 'audio/flac',
+  '.webm': 'audio/webm'
+}
+
 // Serves <document>.crow/audio/<name> as app-audio:///<projectId>/<name>
 // so the renderer can play locally stored audio without loosening webSecurity.
+// Only the metadata preload streams from here; playback runs from a blob of
+// the whole clip (see AudioPlayer), fetched through this same handler.
 export function registerAudioProtocol(): void {
   protocol.handle('app-audio', (request) => {
     const path = audioPath(request.url)
     if (!path) return new Response(null, { status: 400 })
-    return net.fetch(pathToFileURL(path).toString())
+    return serveRangedFile(request, path, CONTENT_TYPES, { 'access-control-allow-origin': '*' })
   })
 }

@@ -19,7 +19,12 @@ import {
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app-image', privileges: { secure: true, supportFetchAPI: true, stream: true } },
-  { scheme: 'app-audio', privileges: { secure: true, supportFetchAPI: true, stream: true } },
+  // `corsEnabled` so the renderer can fetch a clip whole and play it from a
+  // blob; see AudioPlayer.
+  {
+    scheme: 'app-audio',
+    privileges: { secure: true, supportFetchAPI: true, stream: true, corsEnabled: true }
+  },
   // `corsEnabled` on video alone: the cover frame is captured by drawing the
   // video into a canvas, and a canvas drawn from a foreign origin can't be
   // exported. The handler answers with `access-control-allow-origin`, so the
