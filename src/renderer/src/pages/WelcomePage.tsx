@@ -83,9 +83,9 @@ export default function WelcomePage(): React.JSX.Element {
                       className="flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
                     >
                       <FileText className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{doc.name}</span>
-                      <span className="ml-auto truncate pl-4 text-xs text-muted-foreground">
-                        {doc.path}
+                      <span className="max-w-[70%] shrink-0 truncate">{doc.name}</span>
+                      <span className="min-w-0 flex-1 truncate pl-4 text-right text-xs text-muted-foreground">
+                        {doc.displayPath}
                       </span>
                     </button>
                   </li>

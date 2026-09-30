@@ -8,7 +8,7 @@ import {
   writeFileSync,
   type FSWatcher
 } from 'fs'
-import { basename, dirname, extname, join, resolve } from 'path'
+import { basename, dirname, extname, join, resolve, sep } from 'path'
 import { randomUUID } from 'crypto'
 import { newProject } from '@shared/defaults'
 import type { Project, RecentDocument } from '@shared/types'
@@ -117,7 +117,12 @@ function addRecent(path: string): void {
 export function getRecentDocuments(): RecentDocument[] {
   return readRecent()
     .filter((path) => existsSync(path))
-    .map((path) => ({ path, name: displayName(path) }))
+    .map((path) => ({ path, name: displayName(path), displayPath: tildify(path) }))
+}
+
+function tildify(path: string): string {
+  const home = app.getPath('home')
+  return path === home || path.startsWith(home + sep) ? '~' + path.slice(home.length) : path
 }
 
 export function clearRecentDocuments(): void {

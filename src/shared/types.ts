@@ -350,6 +350,8 @@ export interface RecentDocument {
   path: string
   /** File name without the `.crow` extension. */
   name: string
+  /** `path` with the home directory shortened to `~`, for display. */
+  displayPath: string
 }
 
 export interface ContextMenuItem {
