@@ -12,9 +12,21 @@ export default function WelcomePage(): React.JSX.Element {
   const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
-    void window.api.getRecentDocuments().then(setRecent)
+    const loadRecent = (): void => void window.api.getRecentDocuments().then(setRecent)
+    loadRecent()
     void window.api.getLegacyProjectCount().then(setLegacyCount)
+    return window.api.onRecentDocumentsChanged(loadRecent)
   }, [])
+
+  const openRecentContextMenu = (path: string) => async (e: React.MouseEvent): Promise<void> => {
+    e.preventDefault()
+    const action = await window.api.showContextMenu([
+      { id: 'open', label: 'Open' },
+      { id: 'reveal', label: isMac ? 'Show in Finder' : 'Show in Folder' }
+    ])
+    if (action === 'open') void window.api.openDocument(path)
+    else if (action === 'reveal') void window.api.revealDocument(path)
+  }
 
   const handleExportLegacy = async (): Promise<void> => {
     setExporting(true)
@@ -80,6 +92,7 @@ export default function WelcomePage(): React.JSX.Element {
                       type="button"
                       title={doc.path}
                       onClick={() => void window.api.openDocument(doc.path)}
+                      onContextMenu={openRecentContextMenu(doc.path)}
                       className="flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
                     >
                       <FileText className="size-4 shrink-0 text-muted-foreground" />

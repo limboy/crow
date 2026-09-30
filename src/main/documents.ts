@@ -1,9 +1,11 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import {
   existsSync,
   promises as fs,
+  readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   watch,
   writeFileSync,
   type FSWatcher
@@ -93,6 +95,22 @@ export function setRecentListener(listener: () => void): void {
   onRecentChanged = listener
 }
 
+/** Called whenever the list may have changed: re-watches its folders and tells
+ *  the menu and the welcome window. */
+function recentChanged(): void {
+  watchRecentFolders()
+  onRecentChanged()
+  if (welcomeWin && !welcomeWin.isDestroyed()) welcomeWin.webContents.send('documents:recentChanged')
+}
+
+function writeRecent(list: string[]): void {
+  try {
+    writeFileSync(recentFile(), JSON.stringify(list, null, 2), 'utf-8')
+  } catch {
+    // a lost recent entry isn't worth failing an open over
+  }
+}
+
 function readRecent(): string[] {
   try {
     const parsed: unknown = JSON.parse(readFileSync(recentFile(), 'utf-8'))
@@ -104,13 +122,8 @@ function readRecent(): string[] {
 
 function addRecent(path: string): void {
   app.addRecentDocument(path)
-  const list = [path, ...readRecent().filter((p) => p !== path)].slice(0, MAX_RECENT)
-  try {
-    writeFileSync(recentFile(), JSON.stringify(list, null, 2), 'utf-8')
-  } catch {
-    // a lost recent entry isn't worth failing an open over
-  }
-  onRecentChanged()
+  writeRecent([path, ...readRecent().filter((p) => p !== path)].slice(0, MAX_RECENT))
+  recentChanged()
 }
 
 /** Recently opened documents that are still where they were. */
@@ -128,7 +141,89 @@ function tildify(path: string): string {
 export function clearRecentDocuments(): void {
   app.clearRecentDocuments()
   rmSync(recentFile(), { force: true })
-  onRecentChanged()
+  recentChanged()
+}
+
+/** Shows a recent document in Finder (or the platform's file manager). */
+function revealRecentDocument(path: string): void {
+  if (readRecent().includes(path)) shell.showItemInFolder(path)
+}
+
+// Each recent document's folder is watched, so renaming or deleting one in
+// Finder updates the list straight away. A rename within the same folder keeps
+// the file's inode, which is how the entry follows it to its new name.
+const recentWatchers = new Map<string, FSWatcher>()
+const recentInodes = new Map<string, number>()
+let recentSyncTimer: NodeJS.Timeout | undefined
+
+function inodeOf(path: string): number | undefined {
+  try {
+    return statSync(path).ino
+  } catch {
+    return undefined
+  }
+}
+
+function watchRecentFolders(): void {
+  const paths = readRecent()
+  recentInodes.clear()
+  for (const path of paths) {
+    const ino = inodeOf(path)
+    if (ino !== undefined) recentInodes.set(path, ino)
+  }
+  const folders = new Set(paths.map((path) => dirname(path)))
+  for (const [folder, watcher] of recentWatchers) {
+    if (folders.has(folder)) continue
+    watcher.close()
+    recentWatchers.delete(folder)
+  }
+  for (const folder of folders) {
+    if (recentWatchers.has(folder)) continue
+    try {
+      const watcher = watch(folder, () => {
+        clearTimeout(recentSyncTimer)
+        recentSyncTimer = setTimeout(syncRecent, 200)
+      })
+      // A folder that's itself deleted errors out; the next sync drops it.
+      watcher.on('error', () => {
+        watcher.close()
+        recentWatchers.delete(folder)
+      })
+      recentWatchers.set(folder, watcher)
+    } catch {
+      // the folder is gone or unreadable — nothing to watch
+    }
+  }
+}
+
+/** Finds where a missing recent document was renamed to within its folder. */
+function findRenamed(path: string): string | undefined {
+  const ino = recentInodes.get(path)
+  if (ino === undefined) return undefined
+  const folder = dirname(path)
+  try {
+    for (const name of readdirSync(folder)) {
+      const candidate = join(folder, name)
+      if (isCrowPath(candidate) && inodeOf(candidate) === ino) return candidate
+    }
+  } catch {
+    // the folder went too
+  }
+  return undefined
+}
+
+function syncRecent(): void {
+  const list = readRecent()
+  let renamed = false
+  const next = list.map((path) => {
+    if (existsSync(path)) return path
+    const to = findRenamed(path)
+    if (!to || list.includes(to)) return path
+    renamed = true
+    return to
+  })
+  if (renamed) writeRecent(next)
+  recentChanged()
 }
 
 // ---------------------------------------------------------------------------
@@ -440,4 +535,6 @@ export function registerDocumentIpc(): void {
     path ? openDocument(path) : openDocumentDialog(BrowserWindow.fromWebContents(e.sender))
   )
   ipcMain.handle('documents:recent', () => getRecentDocuments())
+  ipcMain.handle('documents:reveal', (_e, path: string) => revealRecentDocument(path))
+  watchRecentFolders()
 }

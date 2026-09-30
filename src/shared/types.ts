@@ -392,6 +392,11 @@ export interface Api {
    *  in its own window. */
   openDocument: (path?: string) => Promise<void>
   getRecentDocuments: () => Promise<RecentDocument[]>
+  /** Registers a callback for when the recent list changes — a document was
+   *  opened, or one was renamed or deleted on disk. Returns an unsubscribe. */
+  onRecentDocumentsChanged: (callback: () => void) => () => void
+  /** Shows a recent document in Finder. */
+  revealDocument: (path: string) => Promise<void>
   /** Reads the open document's project (named after its `.crow` file). */
   getProject: (id: string) => Promise<Project>
   /** Saves the project straight into its `.crow` document. */

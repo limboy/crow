@@ -7,6 +7,14 @@ const api: Api = {
   newDocument: () => ipcRenderer.invoke('documents:new'),
   openDocument: (path?: string) => ipcRenderer.invoke('documents:open', path),
   getRecentDocuments: () => ipcRenderer.invoke('documents:recent'),
+  onRecentDocumentsChanged: (callback: () => void) => {
+    const listener = (): void => callback()
+    ipcRenderer.on('documents:recentChanged', listener)
+    return () => {
+      ipcRenderer.removeListener('documents:recentChanged', listener)
+    }
+  },
+  revealDocument: (path: string) => ipcRenderer.invoke('documents:reveal', path),
   getProject: (id: string) => ipcRenderer.invoke('projects:get', id),
   saveProject: (project: Project) => ipcRenderer.invoke('projects:save', project),
   onFlushRequest: (callback: () => Promise<void>) => {
