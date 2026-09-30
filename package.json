@@ -1,6 +1,6 @@
 {
   "name": "crow",
-  "version": "3.1.5",
+  "version": "3.1.6",
   "description": "A lite Airtable-style desktop app",
   "main": "./out/main/index.js",
   "bin": {
